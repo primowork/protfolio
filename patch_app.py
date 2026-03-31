@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
-"""Primo Portfolio Patch v5 – safe DOM sort + day toggle"""
-import os, shutil, re
+"""
+Primo Portfolio Patch v5
+Run: python3 patch_app.py
+Place next to app.html
+"""
+import os, shutil, re, sys
 
-MARKER = 'Primo Portfolio Feature Patch v'
-
-PATCH = r"""
-<script>
-/* ═══════════════════════════════════════════════════
+PATCH = r"""<script>
+/* =======================================================
    Primo Portfolio Feature Patch v5
    Sort | Day Toggle | Live USD/ILS
-   ═══════════════════════════════════════════════════ */
+   ======================================================= */
 (function () {
   'use strict';
 
@@ -17,12 +18,10 @@ PATCH = r"""
   sty.textContent = [
     '.pp-th{cursor:pointer;user-select:none;}',
     '.pp-th:hover{color:hsl(195 100% 60%)!important;}',
-    '.pp-asc .pp-ind::after{content:" ↑";opacity:1;color:hsl(195 100% 50%);}',
-    '.pp-desc .pp-ind::after{content:" ↓";opacity:1;color:hsl(195 100% 50%);}',
-    '.pp-ind::after{content:" ↕";opacity:.35;font-size:9px;}',
-    '.pp-day-btn{display:inline-block;font-size:9px;padding:1px 5px;margin-left:3px;',
-    'border:1px solid hsl(222 14% 20%);background:transparent;color:hsl(210 10% 55%);',
-    'cursor:pointer;border-radius:2px;transition:all .15s;vertical-align:middle;font-family:monospace;}',
+    '.pp-asc .pp-ind::after{content:" \u2191";opacity:1;color:hsl(195 100% 50%);}',
+    '.pp-desc .pp-ind::after{content:" \u2193";opacity:1;color:hsl(195 100% 50%);}',
+    '.pp-ind::after{content:" \u2195";opacity:.35;font-size:9px;}',
+    '.pp-day-btn{display:inline-block;font-size:9px;padding:1px 5px;margin-left:3px;border:1px solid hsl(222 14% 20%);background:transparent;color:hsl(210 10% 55%);cursor:pointer;border-radius:2px;transition:all .15s;vertical-align:middle;font-family:monospace;}',
     '.pp-day-btn.on,.pp-day-btn:hover{border-color:hsl(195 100% 50%/.6);color:hsl(195 100% 60%);}',
     '.pp-rate{font-size:10px;color:hsl(210 10% 40%);margin-left:8px;vertical-align:middle;}'
   ].join('');
@@ -32,7 +31,14 @@ PATCH = r"""
   function refreshRate() {
     fetch('/api/usdils')
       .then(function(r){ return r.ok ? r.json() : null; })
-      .then(function(d){ if (d && d.rate) { _rate = d.rate; document.querySelectorAll('.pp-rate').forEach(function(el){ el.textContent = '₪/$ '+_rate.toFixed(3); }); } })
+      .then(function(d){
+        if (d && d.rate) {
+          _rate = d.rate;
+          document.querySelectorAll('.pp-rate').forEach(function(el){
+            el.textContent = '\u20aa/$ '+_rate.toFixed(3);
+          });
+        }
+      })
       .catch(function(){});
   }
   refreshRate();
@@ -41,11 +47,11 @@ PATCH = r"""
   function injectRateBadge() {
     document.querySelectorAll('button').forEach(function(btn) {
       if (btn._ppBadge) return;
-      if (btn.textContent.includes('↻') || /רענן/.test(btn.textContent)) {
+      if (btn.textContent.includes('\u21bb') || /\u05e8\u05e2\u05e0\u05df/.test(btn.textContent)) {
         btn._ppBadge = true;
         var b = document.createElement('span');
         b.className = 'pp-rate';
-        b.textContent = '₪/$ '+_rate.toFixed(3);
+        b.textContent = '\u20aa/$ '+_rate.toFixed(3);
         btn.parentNode && btn.parentNode.insertBefore(b, btn.nextSibling);
       }
     });
@@ -55,13 +61,12 @@ PATCH = r"""
 
   function parseNum(cell) {
     if (!cell) return null;
-    var t = cell.textContent.replace(/[₪$,%+\s]/g,'').replace(/—/g,'').trim();
+    var t = cell.textContent.replace(/[\u20aa$,%+\s]/g,'').replace(/\u2014/g,'').trim();
     if (!t) return null;
     var n = parseFloat(t);
     return isNaN(n) ? null : n;
   }
 
-  /* Snapshot row data ONCE */
   function snapshotRows(tbody) {
     Array.from(tbody.rows).forEach(function(row) {
       if (row._ppSnap) return;
@@ -94,14 +99,14 @@ PATCH = r"""
 
   function buildHeaders(table, ths, state) {
     var COLS = [
-      {i:0,k:'ticker',  label:'נייר',        t:'str'},
-      {i:1,k:null,       label:'סוג',          t:null},
-      {i:2,k:'shares',   label:'מניות',        t:'num'},
-      {i:3,k:'avgPrice', label:'מחיר עלות',    t:'num'},
-      {i:4,k:'curPrice', label:'מחיר נוכחי',   t:'num'},
-      {i:5,k:'value',    label:'שווי',         t:'num'},
-      {i:6,k:'gain',     label:'רווח/הפסד',    t:'num'},
-      {i:7,k:'dayGain',  label:'יום זה',       t:'num'},
+      {i:0, k:'ticker',   label:'\u05e0\u05d9\u05d9\u05e8'},
+      {i:1, k:null,        label:'\u05e1\u05d5\u05d2'},
+      {i:2, k:'shares',    label:'\u05de\u05e0\u05d9\u05d5\u05ea'},
+      {i:3, k:'avgPrice',  label:'\u05de\u05d7\u05d9\u05e8 \u05e2\u05dc\u05d5\u05ea'},
+      {i:4, k:'curPrice',  label:'\u05de\u05d7\u05d9\u05e8 \u05e0\u05d5\u05db\u05d7\u05d9'},
+      {i:5, k:'value',     label:'\u05e9\u05d5\u05d5\u05d9'},
+      {i:6, k:'gain',      label:'\u05e8\u05d5\u05d5\u05d7/\u05d4\u05e4\u05e1\u05d3'},
+      {i:7, k:'dayGain',   label:'\u05d9\u05d5\u05dd \u05d6\u05d4'},
     ];
     COLS.forEach(function(col) {
       var th = ths[col.i];
@@ -132,7 +137,6 @@ PATCH = r"""
         var ind = document.createElement('span');
         ind.className = 'pp-ind';
         th.appendChild(ind);
-
         th.addEventListener('click', function() {
           if (state.sortKey === col.k) state.sortDir *= -1;
           else { state.sortKey = col.k; state.sortDir = -1; }
@@ -146,7 +150,6 @@ PATCH = r"""
     buildHeaders(table, ths, state);
     var tbody = table.querySelector('tbody');
     if (!tbody) return;
-
     snapshotRows(tbody);
     var groups = collectGroups(tbody);
     if (!groups.length) return;
@@ -178,7 +181,8 @@ PATCH = r"""
           var prev = v - dv;
           var pct = prev !== 0 ? dv / prev * 100 : 0;
           var pos = pct >= 0;
-          dc.innerHTML = '<span class="num" style="color:'+(pos?'#34d399':'#f87171')+';">'+(pos?'+':'')+pct.toFixed(2)+'%</span>';
+          dc.innerHTML = '<span class="num" style="color:'+(pos?'#34d399':'#f87171')+';">'
+            +(pos?'+':'')+pct.toFixed(2)+'%</span>';
         }
       } else {
         dc.innerHTML = snap.dayHTML;
@@ -190,8 +194,8 @@ PATCH = r"""
     if (enhanced.has(table)) return;
     var ths = Array.from(table.querySelectorAll('thead th'));
     var labels = ths.map(function(h){ return h.textContent.trim(); });
-    if (!labels.includes('נייר')) return;
-    if (!labels.some(function(l){ return l.includes('שווי'); })) return;
+    if (!labels.includes('\u05e0\u05d9\u05d9\u05e8')) return;
+    if (!labels.some(function(l){ return l.includes('\u05e9\u05d5\u05d5\u05d9'); })) return;
     enhanced.add(table);
     var state = { sortKey: 'value', sortDir: -1, dayMode: '$' };
     renderTable(table, ths, state);
@@ -209,78 +213,46 @@ PATCH = r"""
   }, 1200);
 
 })();
-</script>
-"""
+</script>"""
 
-ENDPOINT = """
-@app.route('/api/usdils')
-def usdils():
-    try:
-        info = yf.Ticker('USDILS=X').fast_info
-        rate = info.last_price
-        prev = info.previous_close
-        if rate:
-            return jsonify({'rate': round(rate, 4), 'prev': round(prev, 4) if prev else None})
-    except:
-        pass
-    return jsonify({'rate': None, 'prev': None})
-"""
-
-def strip_old_patch(html):
-    pattern = re.compile(
-        r'\n?<script>\s*/\*[^*]*Primo Portfolio Feature Patch v.*?</script>',
-        re.DOTALL
-    )
-    cleaned, n = pattern.subn('', html)
-    if n:
-        print(f'✓ Removed {n} old patch block(s)')
-    return cleaned
-
-def patch_html(path):
-    with open(path, 'r', encoding='utf-8') as f:
-        html = f.read()
-    html = strip_old_patch(html)
-    if '</body>' in html:
-        html = html.replace('</body>', PATCH + '\n</body>', 1)
-    else:
-        html += PATCH
-    with open(path, 'w', encoding='utf-8') as f:
-        f.write(html)
-    print(f'✓ Patched {path}')
-
-def patch_server(path):
-    with open(path, 'r', encoding='utf-8') as f:
-        content = f.read()
-    if '/api/usdils' in content:
-        print('✓ server.py already has /api/usdils')
-        return
-    marker = "@app.route('/', defaults={'path': ''})"
-    if marker in content:
-        content = content.replace(marker, ENDPOINT + '\n' + marker)
-    else:
-        content = content.replace("if __name__ == '__main__':", ENDPOINT + "\nif __name__ == '__main__':")
-    with open(path, 'w', encoding='utf-8') as f:
-        f.write(content)
-    print(f'✓ Patched {path}')
+STRIP_PATTERN = re.compile(
+    r"\n?<script>\s*/\*[^*]*Primo Portfolio Feature Patch v.*?</script>",
+    re.DOTALL
+)
 
 def main():
     here = os.path.dirname(os.path.abspath(__file__))
-    html_path   = os.path.join(here, 'app.html')
-    server_path = os.path.join(here, 'server.py')
+    html_path = os.path.join(here, "app.html")
+    
     if not os.path.exists(html_path):
-        print(f'✗ app.html not found in {here}')
-        return
-    bak = html_path + '.bak'
+        print(f"ERROR: app.html not found in {here}")
+        sys.exit(1)
+    
+    # Backup
+    bak = html_path + ".bak"
     if not os.path.exists(bak):
         shutil.copy2(html_path, bak)
-        print(f'✓ Backup: {bak}')
-    patch_html(html_path)
-    if os.path.exists(server_path):
-        patch_server(server_path)
+        print(f"Backup created: {bak}")
+    
+    with open(html_path, "r", encoding="utf-8") as f:
+        html = f.read()
+    
+    # Remove old patch
+    html, n = STRIP_PATTERN.subn("", html)
+    if n:
+        print(f"Removed {n} old patch block(s)")
+    
+    # Inject new patch
+    if "</body>" in html:
+        html = html.replace("</body>", PATCH + "\n</body>", 1)
     else:
-        print('⚠  server.py not found')
-    print()
-    print('✅ Done! Restart server + hard refresh (Ctrl+Shift+R)')
+        html += PATCH
+    
+    with open(html_path, "w", encoding="utf-8") as f:
+        f.write(html)
+    
+    print("Done! app.html patched successfully.")
+    print("Now: git add app.html && git commit -m 'patch v5' && git push")
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
