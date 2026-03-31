@@ -17,6 +17,19 @@ def prices():
             pass
     return jsonify({'prices': result_prices, 'prevClose': result_prev})
 
+
+@app.route('/api/usdils')
+def usdils():
+    try:
+        info = yf.Ticker('USDILS=X').fast_info
+        rate = info.last_price
+        prev = info.previous_close
+        if rate:
+            return jsonify({'rate': round(rate, 4), 'prev': round(prev, 4) if prev else None})
+    except:
+        pass
+    return jsonify({'rate': None, 'prev': None})
+
 @app.route('/', defaults={'path': ''})
 @app.route('/<path:path>')
 def serve(path):
