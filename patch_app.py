@@ -1,15 +1,7 @@
-#!/usr/bin/env python3
-"""
-Primo Portfolio Patch v5
-Run: python3 patch_app.py
-Place next to app.html
-"""
-import os, shutil, re, sys
-
-PATCH = r"""<script>
+<script>
 /* =======================================================
-   Primo Portfolio Feature Patch v5
-   Sort | Day Toggle | Live USD/ILS
+   Primo Portfolio Feature Patch v5.1 - FIXED
+   Sort | Day Toggle | Live USD/ILS (public API)
    ======================================================= */
 (function () {
   'use strict';
@@ -18,9 +10,9 @@ PATCH = r"""<script>
   sty.textContent = [
     '.pp-th{cursor:pointer;user-select:none;}',
     '.pp-th:hover{color:hsl(195 100% 60%)!important;}',
-    '.pp-asc .pp-ind::after{content:" \u2191";opacity:1;color:hsl(195 100% 50%);}',
-    '.pp-desc .pp-ind::after{content:" \u2193";opacity:1;color:hsl(195 100% 50%);}',
-    '.pp-ind::after{content:" \u2195";opacity:.35;font-size:9px;}',
+    '.pp-asc .pp-ind::after{content:" ↑";opacity:1;color:hsl(195 100% 50%);}',
+    '.pp-desc .pp-ind::after{content:" ↓";opacity:1;color:hsl(195 100% 50%);}',
+    '.pp-ind::after{content:" ↕";opacity:.35;font-size:9px;}',
     '.pp-day-btn{display:inline-block;font-size:9px;padding:1px 5px;margin-left:3px;border:1px solid hsl(222 14% 20%);background:transparent;color:hsl(210 10% 55%);cursor:pointer;border-radius:2px;transition:all .15s;vertical-align:middle;font-family:monospace;}',
     '.pp-day-btn.on,.pp-day-btn:hover{border-color:hsl(195 100% 50%/.6);color:hsl(195 100% 60%);}',
     '.pp-rate{font-size:10px;color:hsl(210 10% 40%);margin-left:8px;vertical-align:middle;}'
@@ -28,14 +20,15 @@ PATCH = r"""<script>
   document.head.appendChild(sty);
 
   var _rate = 3.72;
+
   function refreshRate() {
-    fetch('/api/usdils')
+    fetch('https://api.exchangerate.host/latest?base=USD&symbols=ILS')
       .then(function(r){ return r.ok ? r.json() : null; })
       .then(function(d){
-        if (d && d.rate) {
-          _rate = d.rate;
+        if (d && d.rates && d.rates.ILS) {
+          _rate = d.rates.ILS;
           document.querySelectorAll('.pp-rate').forEach(function(el){
-            el.textContent = '\u20aa/$ '+_rate.toFixed(3);
+            el.textContent = '₪/$ ' + _rate.toFixed(3);
           });
         }
       })
@@ -47,11 +40,11 @@ PATCH = r"""<script>
   function injectRateBadge() {
     document.querySelectorAll('button').forEach(function(btn) {
       if (btn._ppBadge) return;
-      if (btn.textContent.includes('\u21bb') || /\u05e8\u05e2\u05e0\u05df/.test(btn.textContent)) {
+      if (btn.textContent.includes('↻') || /רענן/.test(btn.textContent)) {
         btn._ppBadge = true;
         var b = document.createElement('span');
         b.className = 'pp-rate';
-        b.textContent = '\u20aa/$ '+_rate.toFixed(3);
+        b.textContent = '₪/$ ' + _rate.toFixed(3);
         btn.parentNode && btn.parentNode.insertBefore(b, btn.nextSibling);
       }
     });
@@ -99,24 +92,27 @@ PATCH = r"""<script>
 
   function buildHeaders(table, ths, state) {
     var COLS = [
-      {i:0, k:'ticker',   label:'\u05e0\u05d9\u05d9\u05e8'},
-      {i:1, k:null,        label:'\u05e1\u05d5\u05d2'},
-      {i:2, k:'shares',    label:'\u05de\u05e0\u05d9\u05d5\u05ea'},
-      {i:3, k:'avgPrice',  label:'\u05de\u05d7\u05d9\u05e8 \u05e2\u05dc\u05d5\u05ea'},
-      {i:4, k:'curPrice',  label:'\u05de\u05d7\u05d9\u05e8 \u05e0\u05d5\u05db\u05d7\u05d9'},
-      {i:5, k:'value',     label:'\u05e9\u05d5\u05d5\u05d9'},
-      {i:6, k:'gain',      label:'\u05e8\u05d5\u05d5\u05d7/\u05d4\u05e4\u05e1\u05d3'},
-      {i:7, k:'dayGain',   label:'\u05d9\u05d5\u05dd \u05d6\u05d4'},
+      {i:0, k:'ticker',   label:'נייר'},
+      {i:1, k:null,        label:'סוג'},
+      {i:2, k:'shares',    label:'מניות'},
+      {i:3, k:'avgPrice',  label:'מחיר עלות'},
+      {i:4, k:'curPrice',  label:'מחיר נוכחי'},
+      {i:5, k:'value',     label:'שווי'},
+      {i:6, k:'gain',      label:'רווח/הפסד'},
+      {i:7, k:'dayGain',   label:'יום זה'},
     ];
+
     COLS.forEach(function(col) {
       var th = ths[col.i];
       if (!th) return;
+
       var isActive = (state.sortKey === col.k);
       var dir = isActive ? (state.sortDir > 0 ? 'pp-asc' : 'pp-desc') : '';
       th.className = 'py-2 px-2 text-[10px] text-muted-foreground uppercase tracking-wider font-medium whitespace-nowrap'
         + (col.k ? ' pp-th ' + dir : '');
       th.innerHTML = '';
 
+      // Day toggle button
       if (col.k === 'dayGain') {
         var btn = document.createElement('button');
         btn.className = 'pp-day-btn' + (state.dayMode === '%' ? ' on' : '');
@@ -137,11 +133,21 @@ PATCH = r"""<script>
         var ind = document.createElement('span');
         ind.className = 'pp-ind';
         th.appendChild(ind);
-        th.addEventListener('click', function() {
-          if (state.sortKey === col.k) state.sortDir *= -1;
-          else { state.sortKey = col.k; state.sortDir = -1; }
-          renderTable(table, ths, state);
-        });
+
+        // ←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←
+        // חשוב: listener רק פעם אחת!
+        if (!th._ppClickHandler) {
+          th._ppClickHandler = true;
+          th.addEventListener('click', function() {
+            if (state.sortKey === col.k) {
+              state.sortDir *= -1;
+            } else {
+              state.sortKey = col.k;
+              state.sortDir = -1;   // ברירת מחדל descending
+            }
+            renderTable(table, ths, state);
+          });
+        }
       }
     });
   }
@@ -172,6 +178,7 @@ PATCH = r"""<script>
     });
     tbody.appendChild(frag);
 
+    // עדכון תא "יום זה" לפי % או $
     groups.forEach(function(g) {
       var dc = g.main.cells[7], snap = g.main._ppSnap;
       if (!dc || !snap) return;
@@ -194,8 +201,9 @@ PATCH = r"""<script>
     if (enhanced.has(table)) return;
     var ths = Array.from(table.querySelectorAll('thead th'));
     var labels = ths.map(function(h){ return h.textContent.trim(); });
-    if (!labels.includes('\u05e0\u05d9\u05d9\u05e8')) return;
-    if (!labels.some(function(l){ return l.includes('\u05e9\u05d5\u05d5\u05d9'); })) return;
+    if (!labels.includes('נייר')) return;
+    if (!labels.some(function(l){ return l.includes('שווי'); })) return;
+
     enhanced.add(table);
     var state = { sortKey: 'value', sortDir: -1, dayMode: '$' };
     renderTable(table, ths, state);
@@ -213,46 +221,4 @@ PATCH = r"""<script>
   }, 1200);
 
 })();
-</script>"""
-
-STRIP_PATTERN = re.compile(
-    r"\n?<script>\s*/\*[^*]*Primo Portfolio Feature Patch v.*?</script>",
-    re.DOTALL
-)
-
-def main():
-    here = os.path.dirname(os.path.abspath(__file__))
-    html_path = os.path.join(here, "app.html")
-    
-    if not os.path.exists(html_path):
-        print(f"ERROR: app.html not found in {here}")
-        sys.exit(1)
-    
-    # Backup
-    bak = html_path + ".bak"
-    if not os.path.exists(bak):
-        shutil.copy2(html_path, bak)
-        print(f"Backup created: {bak}")
-    
-    with open(html_path, "r", encoding="utf-8") as f:
-        html = f.read()
-    
-    # Remove old patch
-    html, n = STRIP_PATTERN.subn("", html)
-    if n:
-        print(f"Removed {n} old patch block(s)")
-    
-    # Inject new patch
-    if "</body>" in html:
-        html = html.replace("</body>", PATCH + "\n</body>", 1)
-    else:
-        html += PATCH
-    
-    with open(html_path, "w", encoding="utf-8") as f:
-        f.write(html)
-    
-    print("Done! app.html patched successfully.")
-    print("Now: git add app.html && git commit -m 'patch v5' && git push")
-
-if __name__ == "__main__":
-    main()
+</script>
