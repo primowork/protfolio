@@ -1,7 +1,7 @@
-cat > server.py << 'EOF'
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse, JSONResponse
-import httpx, uvicorn, logging, os
+import uvicorn, logging, os
+import yfinance as yf
 
 logging.basicConfig(level=logging.INFO)
 app = FastAPI()
@@ -19,45 +19,43 @@ async def health():
 
 @app.get("/api/debug")
 async def debug():
-    async with httpx.AsyncClient(follow_redirects=True) as client:
-        try:
-            r = await client.get(
-                "https://query1.finance.yahoo.com/v8/finance/quote?symbols=AAPL&fields=regularMarketPrice,regularMarketPreviousClose,symbol",
-                headers={"User-Agent": "Mozilla/5.0"},
-                timeout=8.0
-            )
-            return {"status": r.status_code, "body": r.text[:800]}
-        except Exception as e:
-            return {"error": str(e)}
+    try:
+        t = yf.Ticker("AAPL")
+        info = t.fast_info
+        return {"lastPrice": info.last_price, "prevClose": info.previous_close}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.get("/api/usdils")
+async def get_usdils():
+    try:
+        t = yf.Ticker("ILS=X")
+        rate = t.fast_info.last_price
+        return {"rate": rate}
+    except Exception as e:
+        return {"rate": 3.7, "error": str(e)}
 
 @app.get("/api/prices")
 async def get_prices(symbols: str = ""):
     if not symbols:
-        return {"prices": {}, "prevClose": {}}
-    fields = "regularMarketPrice,regularMarketPreviousClose,symbol"
-    headers = {"User-Agent": "Mozilla/5.0"}
-    async with httpx.AsyncClient(follow_redirects=True) as client:
-        for url in [
-            f"https://query1.finance.yahoo.com/v8/finance/quote?symbols={symbols}&fields={fields}",
-            f"https://query2.finance.yahoo.com/v8/finance/quote?symbols={symbols}&fields={fields}",
-        ]:
+        return JSONResponse({"prices": {}, "prevClose": {}})
+    sym_list = [s.strip() for s in symbols.split(",") if s.strip()]
+    prices, prev = {}, {}
+    try:
+        tickers = yf.Tickers(" ".join(sym_list))
+        for sym in sym_list:
             try:
-                r = await client.get(url, headers=headers, timeout=8.0)
-                if r.status_code == 200:
-                    results = r.json().get("quoteResponse", {}).get("result", [])
-                    prices, prev = {}, {}
-                    for item in results:
-                        s = item.get("symbol")
-                        if s:
-                            if item.get("regularMarketPrice"): prices[s] = item["regularMarketPrice"]
-                            if item.get("regularMarketPreviousClose"): prev[s] = item["regularMarketPreviousClose"]
-                    if prices:
-                        return {"prices": prices, "prevClose": prev}
+                info = tickers.tickers[sym].fast_info
+                if info.last_price: prices[sym] = info.last_price
+                if info.previous_close: prev[sym] = info.previous_close
             except Exception as e:
-                logging.warning(e)
-    return {"prices": {}, "prevClose": {}}
+                logging.warning(f"{sym}: {e}")
+    except Exception as e:
+        logging.error(e)
+    logging.info(f"Got {len(prices)} prices, {len(prev)} prevClose")
+    return JSONResponse({"prices": prices, "prevClose": prev})
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8000))
     uvicorn.run("server:app", host="0.0.0.0", port=port)
-EOF
