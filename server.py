@@ -6,7 +6,8 @@ import yfinance as yf
 logging.basicConfig(level=logging.INFO)
 app = FastAPI()
 
-with open("app.html", "r", encoding="utf-8") as f:
+_dir = os.path.dirname(os.path.abspath(__file__))
+with open(os.path.join(_dir, "app.html"), "r", encoding="utf-8") as f:
     HTML_CONTENT = f.read()
 
 @app.get("/")
