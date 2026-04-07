@@ -927,3 +927,225 @@ curl "http://localhost:8000/api/usdils"<!DOCTYPE html><html lang=en><style>*,:be
 
 })();
 </script>
+
+<script>
+/* =======================================================
+   Primo Portfolio Feature Patch v8
+   רשימת הפקדות לפי תאריכים — Deposit History Report
+   ======================================================= */
+(function () {
+  'use strict';
+
+  var STORAGE_KEY = 'primo_portfolio_v6';
+  var _depositSection = null;
+
+  /* ── helpers ─────────────────────────────────────── */
+  function isReportsTab() {
+    var active = false;
+    document.querySelectorAll('button').forEach(function(btn) {
+      if (btn.textContent.trim() === 'דוחות' &&
+          btn.className.includes('border-violet-500')) active = true;
+    });
+    return active;
+  }
+
+  function fmt(n, decimals) {
+    decimals = decimals === undefined ? 0 : decimals;
+    return n.toLocaleString('he-IL', {
+      minimumFractionDigits: decimals,
+      maximumFractionDigits: decimals
+    });
+  }
+
+  function fmtDate(d) {
+    var parts = d.split('-');
+    if (parts.length === 3) return parts[2] + '/' + parts[1] + '/' + parts[0];
+    return d;
+  }
+
+  function getDeposits() {
+    try {
+      var raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return [];
+      var state = JSON.parse(raw);
+      return (state.ilsDeposits || []).slice().sort(function(a,b) {
+        return a.date < b.date ? -1 : a.date > b.date ? 1 : 0;
+      });
+    } catch(e) { return []; }
+  }
+
+  function removeDepositSection() {
+    if (_depositSection && _depositSection.parentNode) {
+      _depositSection.parentNode.removeChild(_depositSection);
+    }
+    _depositSection = null;
+  }
+
+  function sourceColor(note) {
+    if (!note) return '#7dd3fc';
+    var n = note;
+    if (n.includes('פסגות')) return '#a78bfa';
+    if (n.includes('IBKR') || n.includes('Interactive') || n.includes('אינטראקטיב')) return '#67e8f9';
+    return '#7dd3fc';
+  }
+
+  function whoColor(who) {
+    if (!who) return '#94a3b8';
+    if (who === 'אלעד') return '#67e8f9';
+    if (who === 'סיון') return '#f9a8d4';
+    return '#94a3b8';
+  }
+
+  function buildTable(deposits) {
+    var byYear = {};
+    var yearOrder = [];
+    deposits.forEach(function(d) {
+      var y = d.date ? d.date.slice(0,4) : '?';
+      if (!byYear[y]) { byYear[y] = []; yearOrder.push(y); }
+      byYear[y].push(d);
+    });
+
+    var table = document.createElement('table');
+    table.style.cssText = 'width:100%;border-collapse:collapse;font-size:12px;direction:rtl;';
+
+    var thead = document.createElement('thead');
+    thead.innerHTML = [
+      '<tr style="border-bottom:1px solid hsl(222,14%,22%);">',
+      '<th style="padding:8px 6px;color:hsl(210,10%,45%);font-weight:600;text-align:right;">תאריך</th>',
+      '<th style="padding:8px 6px;color:hsl(210,10%,45%);font-weight:600;text-align:right;">מקור</th>',
+      '<th style="padding:8px 6px;color:hsl(210,10%,45%);font-weight:600;text-align:left;">סכום ₪</th>',
+      '<th style="padding:8px 6px;color:hsl(210,10%,45%);font-weight:600;text-align:left;">שער</th>',
+      '<th style="padding:8px 6px;color:hsl(210,10%,45%);font-weight:600;text-align:left;">שווה $</th>',
+      '<th style="padding:8px 6px;color:hsl(210,10%,45%);font-weight:600;text-align:center;">מי</th>',
+      '</tr>'
+    ].join('');
+    table.appendChild(thead);
+
+    var tbody = document.createElement('tbody');
+    var grandTotal = 0;
+    var grandUSD = 0;
+
+    yearOrder.forEach(function(year) {
+      var rows = byYear[year];
+      var yearTotal = 0;
+      var yearUSD = 0;
+
+      var yrRow = document.createElement('tr');
+      yrRow.innerHTML = '<td colspan="6" style="padding:10px 6px 4px;font-size:11px;font-weight:700;color:hsl(195,100%,65%);letter-spacing:.08em;border-top:1px solid hsl(222,14%,20%);">' + year + '</td>';
+      tbody.appendChild(yrRow);
+
+      rows.forEach(function(d) {
+        var rate = d.rate || 0;
+        var usd = rate > 0 ? d.amount / rate : 0;
+        yearTotal += d.amount;
+        yearUSD += usd;
+
+        var sc = sourceColor(d.note);
+        var wc = whoColor(d.who);
+
+        var tr = document.createElement('tr');
+        tr.style.cssText = 'transition:background .12s;';
+        tr.onmouseover = function() { this.style.background = 'hsla(195,100%,50%,.04)'; };
+        tr.onmouseout  = function() { this.style.background = ''; };
+
+        var sourceLabel = (d.note || '—').replace('הפקדה ','').replace('— ','');
+
+        tr.innerHTML = [
+          '<td style="padding:6px;color:#e2e8f0;">' + fmtDate(d.date) + '</td>',
+          '<td style="padding:6px;"><span style="color:' + sc + ';font-size:11px;">' + sourceLabel + '</span></td>',
+          '<td style="padding:6px;text-align:left;font-family:monospace;color:#e2e8f0;">&#x20AA;' + fmt(d.amount) + '</td>',
+          '<td style="padding:6px;text-align:left;color:#94a3b8;font-size:11px;">' + (rate ? fmt(rate, 3) : '&mdash;') + '</td>',
+          '<td style="padding:6px;text-align:left;font-family:monospace;color:#94a3b8;">$' + fmt(usd, 0) + '</td>',
+          '<td style="padding:6px;text-align:center;"><span style="font-size:11px;color:' + wc + ';">' + (d.who || '&mdash;') + '</span></td>'
+        ].join('');
+        tbody.appendChild(tr);
+      });
+
+      var subRow = document.createElement('tr');
+      subRow.style.cssText = 'border-top:1px solid hsl(222,14%,18%);';
+      subRow.innerHTML = [
+        '<td style="padding:5px 6px;"></td>',
+        '<td style="padding:5px 6px;font-size:11px;color:hsl(210,10%,45%);">&#x05E1;&#x05DB;&#x05D5;&#x05DD; ' + year + '</td>',
+        '<td style="padding:5px 6px;text-align:left;font-family:monospace;font-weight:700;color:hsl(195,100%,65%);">&#x20AA;' + fmt(yearTotal) + '</td>',
+        '<td style="padding:5px 6px;"></td>',
+        '<td style="padding:5px 6px;text-align:left;font-family:monospace;color:hsl(195,100%,55%);">$' + fmt(yearUSD, 0) + '</td>',
+        '<td style="padding:5px 6px;"></td>'
+      ].join('');
+      tbody.appendChild(subRow);
+
+      grandTotal += yearTotal;
+      grandUSD += yearUSD;
+    });
+
+    var gtRow = document.createElement('tr');
+    gtRow.style.cssText = 'border-top:2px solid hsl(195,100%,35%);background:hsla(195,100%,50%,.06);';
+    gtRow.innerHTML = [
+      '<td style="padding:9px 6px;"></td>',
+      '<td style="padding:9px 6px;font-weight:700;color:#e2e8f0;font-size:13px;">&#x05E1;&#x05D4;&#x05B4;&#x05DB; &#x05D4;&#x05E4;&#x05E7;&#x05D3;&#x05D5;&#x05EA;</td>',
+      '<td style="padding:9px 6px;text-align:left;font-family:monospace;font-weight:800;font-size:14px;color:hsl(195,100%,65%);">&#x20AA;' + fmt(grandTotal) + '</td>',
+      '<td style="padding:9px 6px;"></td>',
+      '<td style="padding:9px 6px;text-align:left;font-family:monospace;font-weight:700;font-size:13px;color:hsl(195,100%,60%);">$' + fmt(grandUSD, 0) + '</td>',
+      '<td style="padding:9px 6px;"></td>'
+    ].join('');
+    tbody.appendChild(gtRow);
+
+    table.appendChild(tbody);
+    return { table: table, total: grandTotal, usd: grandUSD, count: deposits.length };
+  }
+
+  function injectDepositReport() {
+    if (!isReportsTab()) { removeDepositSection(); return; }
+    if (_depositSection && document.body.contains(_depositSection)) return;
+
+    var anchor = document.getElementById('pp-export-section');
+    if (!anchor) {
+      document.querySelectorAll('p').forEach(function(p) {
+        if (p.textContent.includes('שמור תמונת מצב')) {
+          var c = p.closest('div[class]');
+          if (c) anchor = c;
+        }
+      });
+    }
+    if (!anchor || !anchor.parentNode) return;
+
+    var deposits = getDeposits();
+    if (!deposits.length) return;
+
+    var result = buildTable(deposits);
+
+    var section = document.createElement('div');
+    section.id = 'pp-deposit-report';
+    section.style.cssText = 'background:hsl(222,14%,10%);border:1px solid hsl(222,14%,18%);border-radius:6px;padding:16px;margin-bottom:16px;direction:rtl;overflow-x:auto;';
+
+    var header = document.createElement('div');
+    header.style.cssText = 'display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px;';
+
+    var title = document.createElement('div');
+    title.style.cssText = 'display:flex;align-items:center;gap:10px;';
+    title.innerHTML = '<span style="font-size:15px;font-weight:700;color:#e2e8f0;">&#x1F4E5; &#x05E8;&#x05E9;&#x05D9;&#x05DE;&#x05EA; &#x05D4;&#x05E4;&#x05E7;&#x05D3;&#x05D5;&#x05EA;</span>' +
+                      '<span style="font-size:11px;color:hsl(210,10%,45%);">' + result.count + ' &#x05D4;&#x05E4;&#x05E7;&#x05D3;&#x05D5;&#x05EA;</span>';
+
+    var summary = document.createElement('div');
+    summary.style.cssText = 'display:flex;gap:16px;flex-wrap:wrap;';
+    summary.innerHTML = '<span style="font-size:12px;color:hsl(210,10%,50%);">&#x05E1;&#x05D4;&#x05B4;&#x05DB;: <strong style="color:hsl(195,100%,65%);">&#x20AA;' + fmt(result.total) + '</strong></span>' +
+                        '<span style="font-size:12px;color:hsl(210,10%,50%);">&asymp; <strong style="color:hsl(195,100%,55%);">$' + fmt(result.usd, 0) + '</strong></span>';
+
+    header.appendChild(title);
+    header.appendChild(summary);
+    section.appendChild(header);
+    section.appendChild(result.table);
+
+    anchor.parentNode.insertBefore(section, anchor);
+    _depositSection = section;
+  }
+
+  var obs8 = new MutationObserver(function() {
+    if (!isReportsTab()) { removeDepositSection(); return; }
+    injectDepositReport();
+  });
+  obs8.observe(document.body, { childList: true, subtree: true });
+
+  setTimeout(injectDepositReport, 2000);
+
+})();
+</script>
