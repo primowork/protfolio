@@ -209,3 +209,366 @@ curl "http://localhost:8000/api/usdils"<!DOCTYPE html><html lang=en><style>*,:be
 
 })();
 </script>
+
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script>
+/* =======================================================
+   Primo Portfolio Feature Patch v6
+   Excel & PDF Export from דוחות tab
+   ======================================================= */
+(function () {
+  'use strict';
+
+  var STORAGE_KEY = 'primo_portfolio_v6';
+
+  /* ── helpers ─────────────────────────────────────── */
+  function getState() {
+    try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null'); }
+    catch(e) { return null; }
+  }
+
+  function calcHoldings(transactions, prices) {
+    var holdings = {}, realized = {};
+    var sorted = transactions.slice().sort(function(a,b){
+      return new Date(a.date) - new Date(b.date);
+    });
+    sorted.forEach(function(n) {
+      var sym = n.ticker.toUpperCase();
+      if (!holdings[sym]) holdings[sym] = {ticker:sym, shares:0, totalCost:0, avgPrice:0};
+      if (!realized[sym]) realized[sym] = 0;
+      if (n.type === 'buy') {
+        var cost = holdings[sym].totalCost + n.shares * n.price + (n.fee||0);
+        var sh   = holdings[sym].shares + n.shares;
+        holdings[sym].avgPrice  = cost / sh;
+        holdings[sym].totalCost = cost;
+        holdings[sym].shares    = sh;
+      } else if (n.type === 'sell') {
+        realized[sym] += (n.price - holdings[sym].avgPrice) * n.shares - (n.fee||0);
+        holdings[sym].shares    = Math.max(0, holdings[sym].shares - n.shares);
+        holdings[sym].totalCost = holdings[sym].shares * holdings[sym].avgPrice;
+      } else if (n.type === 'dividend') {
+        realized[sym] += n.price * n.shares - (n.fee||0);
+      }
+    });
+    return Object.values(holdings).filter(function(h){ return h.shares > 0; }).map(function(h) {
+      var cur   = (prices && prices[h.ticker]) || null;
+      var value = cur ? cur * h.shares : null;
+      var cost  = h.avgPrice * h.shares;
+      var gain  = value !== null ? value - cost : null;
+      var gainPct = cost > 0 && gain !== null ? gain / cost * 100 : null;
+      return {
+        ticker:    h.ticker,
+        shares:    h.shares,
+        avgPrice:  h.avgPrice,
+        curPrice:  cur,
+        cost:      cost,
+        value:     value,
+        gain:      gain,
+        gainPct:   gainPct,
+        realizedGain: realized[h.ticker] || 0
+      };
+    }).sort(function(a,b){ return (b.value||0) - (a.value||0); });
+  }
+
+  function fmt(n, decimals) {
+    if (n === null || n === undefined) return '';
+    return parseFloat(n.toFixed(decimals !== undefined ? decimals : 2));
+  }
+
+  /* ── Excel export ─────────────────────────────────── */
+  function exportExcel() {
+    var state = getState();
+    if (!state) { alert('לא נמצאו נתונים בזיכרון הדפדפן'); return; }
+
+    var wb = XLSX.utils.book_new();
+
+    /* Sheet 1 — פורטפוליו */
+    var holdings = calcHoldings(state.transactions || [], state.prices || {});
+    var totalCost  = holdings.reduce(function(s,h){ return s + (h.cost||0); }, 0);
+    var totalValue = holdings.reduce(function(s,h){ return s + (h.value||0); }, 0);
+    var totalGain  = totalValue - totalCost;
+
+    var portRows = [['ניירת','מניות','מחיר עלות ($)','מחיר נוכחי ($)','עלות ($)','שווי ($)','רווח/הפסד ($)','%']];
+    holdings.forEach(function(h) {
+      portRows.push([
+        h.ticker,
+        fmt(h.shares,4),
+        fmt(h.avgPrice),
+        h.curPrice !== null ? fmt(h.curPrice) : 'N/A',
+        fmt(h.cost),
+        h.value !== null ? fmt(h.value) : 'N/A',
+        h.gain  !== null ? fmt(h.gain)  : 'N/A',
+        h.gainPct !== null ? fmt(h.gainPct,2)+'%' : 'N/A'
+      ]);
+    });
+    portRows.push([]);
+    portRows.push(['סה״כ','','','', fmt(totalCost), fmt(totalValue), fmt(totalGain), totalCost > 0 ? fmt(totalGain/totalCost*100,2)+'%' : '']);
+    var wsPort = XLSX.utils.aoa_to_sheet(portRows);
+    wsPort['!cols'] = [{wch:8},{wch:10},{wch:14},{wch:14},{wch:14},{wch:14},{wch:16},{wch:8}];
+    XLSX.utils.book_append_sheet(wb, wsPort, 'פורטפוליו');
+
+    /* Sheet 2 — עסקאות */
+    var typeMap = {buy:'קנייה', sell:'מכירה', dividend:'דיבידנד'};
+    var txRows = [['תאריך','ניירת','סוג','מניות','מחיר ($)','עמלה ($)','סה״כ ($)','הערה']];
+    (state.transactions || []).slice().sort(function(a,b){ return new Date(b.date)-new Date(a.date); }).forEach(function(t) {
+      txRows.push([
+        t.date,
+        t.ticker,
+        typeMap[t.type] || t.type,
+        fmt(t.shares,4),
+        fmt(t.price),
+        fmt(t.fee||0),
+        fmt(t.shares * t.price + (t.fee||0)),
+        t.note || ''
+      ]);
+    });
+    var wsTx = XLSX.utils.aoa_to_sheet(txRows);
+    wsTx['!cols'] = [{wch:12},{wch:8},{wch:10},{wch:10},{wch:12},{wch:10},{wch:14},{wch:20}];
+    XLSX.utils.book_append_sheet(wb, wsTx, 'עסקאות');
+
+    /* Sheet 3 — הפקדות ₪ */
+    var ilsRows = [['תאריך','סכום (₪)','שער $/₪','שווי ($)','מי','הערה']];
+    (state.ilsDeposits || []).slice().sort(function(a,b){ return new Date(b.date)-new Date(a.date); }).forEach(function(d) {
+      ilsRows.push([
+        d.date,
+        fmt(d.amount),
+        fmt(d.rate,4),
+        d.rate ? fmt(d.amount / d.rate) : 'N/A',
+        d.who || '',
+        d.note || ''
+      ]);
+    });
+    var totalILS = (state.ilsDeposits||[]).reduce(function(s,d){ return s + (d.amount||0); },0);
+    ilsRows.push([]);
+    ilsRows.push(['סה״כ', fmt(totalILS),'','','','']);
+    var wsILS = XLSX.utils.aoa_to_sheet(ilsRows);
+    wsILS['!cols'] = [{wch:12},{wch:14},{wch:12},{wch:14},{wch:12},{wch:24}];
+    XLSX.utils.book_append_sheet(wb, wsILS, 'הפקדות ₪');
+
+    /* Sheet 4 — תובנות */
+    var totalRealized = Object.keys(state.prices||{}).reduce(function(s, sym){
+      return s;
+    }, 0);
+    // recalculate realized from transactions
+    var realizedBySym = {};
+    (state.transactions||[]).forEach(function(n){
+      var sym = n.ticker.toUpperCase();
+      if (!realizedBySym[sym]) realizedBySym[sym] = 0;
+    });
+    var insRows = [['מדד','ערך']];
+    insRows.push(['שווי פורטפוליו ($)', fmt(totalValue)]);
+    insRows.push(['עלות ממוצעת ($)', fmt(totalCost)]);
+    insRows.push(['רווח לא ממומש ($)', fmt(totalGain)]);
+    insRows.push(['% רווח לא ממומש', totalCost > 0 ? fmt(totalGain/totalCost*100,2)+'%' : 'N/A']);
+    insRows.push(['מס׳ ניירות', holdings.length]);
+    insRows.push(['מס׳ עסקאות', (state.transactions||[]).length]);
+    insRows.push(['סה״כ הפקדות ₪', fmt((state.ilsDeposits||[]).reduce(function(s,d){ return s+(d.amount||0);},0))]);
+    insRows.push(['יעד ₪', fmt(state.goalILS||0)]);
+    insRows.push(['תאריך עדכון מחירים', state.pricesLastUpdated ? state.pricesLastUpdated.slice(0,10) : '']);
+    var wsIns = XLSX.utils.aoa_to_sheet(insRows);
+    wsIns['!cols'] = [{wch:28},{wch:18}];
+    XLSX.utils.book_append_sheet(wb, wsIns, 'תובנות');
+
+    /* Sheet 5 — תמונות מצב */
+    if ((state.snapshots||[]).length > 0) {
+      var snapRows = [['שם','תאריך','שווי ($)','עלות ($)','רווח ($)']];
+      state.snapshots.forEach(function(s) {
+        snapRows.push([
+          s.name || '',
+          s.date ? s.date.slice(0,10) : '',
+          s.totalValue !== undefined ? fmt(s.totalValue) : '',
+          s.totalCost  !== undefined ? fmt(s.totalCost)  : '',
+          s.totalGain  !== undefined ? fmt(s.totalGain)  : ''
+        ]);
+      });
+      var wsSnap = XLSX.utils.aoa_to_sheet(snapRows);
+      wsSnap['!cols'] = [{wch:24},{wch:12},{wch:14},{wch:14},{wch:14}];
+      XLSX.utils.book_append_sheet(wb, wsSnap, 'תמונות מצב');
+    }
+
+    var date = new Date().toISOString().slice(0,10);
+    XLSX.writeFile(wb, 'primo-portfolio-' + date + '.xlsx');
+  }
+
+  /* ── PDF export ───────────────────────────────────── */
+  function exportPDF() {
+    var btn = document.getElementById('pp-pdf-btn');
+    if (btn) { btn.textContent = 'מייצא...'; btn.disabled = true; }
+
+    // Capture the full app container
+    var appEl = document.querySelector('#root > div') || document.querySelector('#root');
+    if (!appEl) { alert('לא ניתן לאתר את תצוגת הדשבורד'); if(btn){btn.textContent='PDF + גרפים';btn.disabled=false;} return; }
+
+    html2canvas(appEl, {
+      scale: 1.5,
+      useCORS: true,
+      allowTaint: true,
+      backgroundColor: '#0d1117',
+      logging: false,
+      windowWidth: appEl.scrollWidth,
+      windowHeight: appEl.scrollHeight
+    }).then(function(canvas) {
+      var imgData = canvas.toDataURL('image/png');
+      var pdf = new window.jspdf.jsPDF({
+        orientation: canvas.width > canvas.height ? 'l' : 'p',
+        unit: 'px',
+        format: [canvas.width, canvas.height]
+      });
+      pdf.addImage(imgData, 'PNG', 0, 0, canvas.width, canvas.height);
+
+      // Second page: data summary from state
+      var state = getState();
+      if (state) {
+        var holdings = calcHoldings(state.transactions || [], state.prices || {});
+        var totalValue = holdings.reduce(function(s,h){ return s+(h.value||0);},0);
+        var totalCost  = holdings.reduce(function(s,h){ return s+(h.cost||0); },0);
+        var totalGain  = totalValue - totalCost;
+
+        pdf.addPage([794, 1123], 'p');
+        var y = 40;
+        pdf.setFont('helvetica','bold');
+        pdf.setFontSize(18);
+        pdf.setTextColor(139,92,246);
+        pdf.text('Primo Portfolio — Report', 40, y);
+        y += 30;
+
+        pdf.setFont('helvetica','normal');
+        pdf.setFontSize(11);
+        pdf.setTextColor(200,200,200);
+        pdf.text('Date: ' + new Date().toLocaleDateString('he-IL'), 40, y); y+=24;
+
+        pdf.setFontSize(13); pdf.setFont('helvetica','bold'); pdf.setTextColor(255,255,255);
+        pdf.text('Portfolio Summary', 40, y); y+=18;
+
+        pdf.setFont('helvetica','normal'); pdf.setFontSize(11); pdf.setTextColor(200,200,200);
+        [
+          ['Total Value',    '$' + totalValue.toLocaleString('en',{minimumFractionDigits:2,maximumFractionDigits:2})],
+          ['Total Cost',     '$' + totalCost.toLocaleString('en',{minimumFractionDigits:2,maximumFractionDigits:2})],
+          ['Unrealized P&L', (totalGain>=0?'+':'')+totalGain.toLocaleString('en',{minimumFractionDigits:2,maximumFractionDigits:2}) + ' (' + (totalCost>0?((totalGain/totalCost*100).toFixed(2)):'0.00') + '%)'],
+          ['Positions',      holdings.length + ''],
+          ['Transactions',   (state.transactions||[]).length + ''],
+          ['ILS Deposits',   '₪' + ((state.ilsDeposits||[]).reduce(function(s,d){return s+(d.amount||0);},0)).toLocaleString('en')]
+        ].forEach(function(row) {
+          pdf.setTextColor(150,150,150); pdf.text(row[0]+':', 40, y);
+          pdf.setTextColor(255,255,255); pdf.text(row[1], 200, y);
+          y += 18;
+        });
+
+        y += 12;
+        pdf.setFont('helvetica','bold'); pdf.setFontSize(13); pdf.setTextColor(255,255,255);
+        pdf.text('Holdings', 40, y); y += 18;
+        pdf.setFont('helvetica','normal'); pdf.setFontSize(9); pdf.setTextColor(130,130,130);
+        pdf.text('Ticker', 40, y); pdf.text('Shares', 110, y); pdf.text('Avg $', 170, y);
+        pdf.text('Cur $', 230, y); pdf.text('Value $', 290, y); pdf.text('P&L $', 370, y); pdf.text('%', 450, y);
+        y += 4;
+        pdf.setDrawColor(80,80,80); pdf.line(40, y, 754, y); y += 10;
+        pdf.setFontSize(9); pdf.setTextColor(210,210,210);
+        holdings.forEach(function(h) {
+          if (y > 1080) return;
+          var gain = h.gain !== null ? (h.gain>=0?'+':'')+h.gain.toFixed(2) : 'N/A';
+          var pct  = h.gainPct !== null ? (h.gainPct>=0?'+':'')+h.gainPct.toFixed(2)+'%' : 'N/A';
+          var color = h.gain !== null ? (h.gain >= 0 ? [52,211,153] : [248,113,113]) : [200,200,200];
+          pdf.setTextColor(210,210,210);
+          pdf.text(h.ticker, 40, y);
+          pdf.text(h.shares.toFixed(2), 110, y);
+          pdf.text('$'+h.avgPrice.toFixed(2), 170, y);
+          pdf.text(h.curPrice ? '$'+h.curPrice.toFixed(2) : 'N/A', 230, y);
+          pdf.text(h.value ? '$'+h.value.toFixed(0) : 'N/A', 290, y);
+          pdf.setTextColor(color[0],color[1],color[2]);
+          pdf.text(gain, 370, y);
+          pdf.text(pct,  450, y);
+          y += 15;
+        });
+      }
+
+      var date = new Date().toISOString().slice(0,10);
+      pdf.save('primo-portfolio-' + date + '.pdf');
+      if (btn) { btn.textContent = 'PDF + גרפים'; btn.disabled = false; }
+    }).catch(function(err) {
+      console.error('PDF export error:', err);
+      alert('שגיאה בייצוא PDF');
+      if (btn) { btn.textContent = 'PDF + גרפים'; btn.disabled = false; }
+    });
+  }
+
+  /* ── inject buttons into the reports tab ─────────── */
+  var injected = false;
+
+  function injectExportButtons() {
+    if (injected) return;
+    // Find the reports section by looking for the "שמור תמונת מצב" text
+    var allP = document.querySelectorAll('p');
+    var snapshotP = null;
+    allP.forEach(function(p) {
+      if (p.textContent.includes('שמור תמונת מצב')) snapshotP = p;
+    });
+    if (!snapshotP) return;
+
+    var container = snapshotP.closest('div[class]');
+    if (!container || !container.parentNode) return;
+
+    // Create export section
+    var section = document.createElement('div');
+    section.style.cssText = 'background:hsl(222 14% 11%);border:1px solid hsl(222 14% 18%);padding:16px;margin-bottom:0;';
+
+    var label = document.createElement('p');
+    label.style.cssText = 'font-size:10px;color:hsl(210 10% 45%);text-transform:uppercase;letter-spacing:.1em;margin-bottom:12px;';
+    label.textContent = 'ייצוא נתונים';
+    section.appendChild(label);
+
+    var row = document.createElement('div');
+    row.style.cssText = 'display:flex;gap:10px;flex-wrap:wrap;';
+
+    var xlBtn = document.createElement('button');
+    xlBtn.id = 'pp-xl-btn';
+    xlBtn.textContent = '⬇ ייצוא לאקסל';
+    xlBtn.style.cssText = 'background:hsl(142 70% 28%);color:#fff;border:none;padding:8px 18px;font-size:13px;cursor:pointer;border-radius:4px;font-weight:600;transition:opacity .15s;';
+    xlBtn.onmouseover  = function(){ this.style.opacity = '.8'; };
+    xlBtn.onmouseout   = function(){ this.style.opacity = '1';  };
+    xlBtn.onclick = function() {
+      if (typeof XLSX === 'undefined') { alert('ספריית Excel עדיין נטענת, נסה שוב בעוד שניה'); return; }
+      exportExcel();
+    };
+
+    var pdfBtn = document.createElement('button');
+    pdfBtn.id = 'pp-pdf-btn';
+    pdfBtn.textContent = 'PDF + גרפים';
+    pdfBtn.style.cssText = 'background:hsl(252 70% 42%);color:#fff;border:none;padding:8px 18px;font-size:13px;cursor:pointer;border-radius:4px;font-weight:600;transition:opacity .15s;';
+    pdfBtn.onmouseover  = function(){ this.style.opacity = '.8'; };
+    pdfBtn.onmouseout   = function(){ this.style.opacity = '1';  };
+    pdfBtn.onclick = function() {
+      if (typeof html2canvas === 'undefined' || typeof window.jspdf === 'undefined') {
+        alert('ספריות PDF עדיין נטענות, נסה שוב בעוד שניה'); return;
+      }
+      exportPDF();
+    };
+
+    var desc = document.createElement('span');
+    desc.style.cssText = 'font-size:10px;color:hsl(210 10% 40%);align-self:center;';
+    desc.textContent = 'פורטפוליו · עסקאות · הפקדות · תובנות';
+
+    row.appendChild(xlBtn);
+    row.appendChild(pdfBtn);
+    row.appendChild(desc);
+    section.appendChild(row);
+
+    container.parentNode.insertBefore(section, container);
+    injected = true;
+  }
+
+  var obs2 = new MutationObserver(function() {
+    // reset when tab changes
+    var allP = document.querySelectorAll('p');
+    var found = false;
+    allP.forEach(function(p){ if (p.textContent.includes('שמור תמונת מצב')) found = true; });
+    if (!found) { injected = false; return; }
+    injectExportButtons();
+  });
+  obs2.observe(document.body, { childList: true, subtree: true });
+
+  setTimeout(injectExportButtons, 1500);
+
+})();
+</script>
