@@ -572,3 +572,344 @@ curl "http://localhost:8000/api/usdils"<!DOCTYPE html><html lang=en><style>*,:be
 
 })();
 </script>
+
+<script>
+/* =======================================================
+   Primo Portfolio Feature Patch v7
+   Modern UX/UI — Charts · Cards · Animations · Glow
+   ======================================================= */
+(function () {
+  'use strict';
+
+  /* ── CSS injection ──────────────────────────────────── */
+  var css = `
+    /* ── Scrollbar ─────────────────────────────────── */
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: hsl(222 14% 22%); border-radius: 99px; }
+    ::-webkit-scrollbar-thumb:hover { background: hsl(195 100% 40%); }
+
+    /* ── Chart area fills — gradient glow ──────────── */
+    .recharts-area-area {
+      filter: drop-shadow(0 0 8px hsla(195,100%,50%,.25));
+    }
+    .recharts-area-curve {
+      filter: drop-shadow(0 0 4px hsla(195,100%,55%,.5));
+      stroke-width: 2.5 !important;
+    }
+    .recharts-line-curve {
+      stroke-width: 2.5 !important;
+      filter: drop-shadow(0 0 5px currentColor);
+    }
+
+    /* ── Bar chart — gradient + hover ──────────────── */
+    .recharts-bar-rectangle path,
+    .recharts-rectangle {
+      transition: opacity .2s, filter .2s;
+    }
+    .recharts-bar-rectangle:hover path,
+    .recharts-bar-rectangle:hover .recharts-rectangle {
+      opacity: .85;
+      filter: brightness(1.25) drop-shadow(0 0 6px hsla(195,100%,50%,.4));
+    }
+
+    /* ── Pie sectors ────────────────────────────────── */
+    .recharts-pie-sector path {
+      transition: transform .25s, filter .25s;
+      transform-origin: center;
+    }
+    .recharts-pie-sector:hover path {
+      transform: scale(1.04);
+      filter: drop-shadow(0 0 10px hsla(195,100%,50%,.45));
+    }
+
+    /* ── Tooltip — glassmorphism ────────────────────── */
+    .recharts-tooltip-wrapper .recharts-default-tooltip,
+    .recharts-tooltip-wrapper > div {
+      background: hsla(222,20%,8%,.92) !important;
+      border: 1px solid hsla(195,100%,50%,.3) !important;
+      border-radius: 8px !important;
+      box-shadow: 0 8px 32px hsla(0,0%,0%,.5), 0 0 0 1px hsla(195,100%,50%,.08) !important;
+      backdrop-filter: blur(12px) !important;
+      color: hsl(210 15% 91%) !important;
+      font-size: 12px !important;
+      padding: 10px 14px !important;
+    }
+    .recharts-tooltip-item { color: hsl(195 100% 65%) !important; }
+    .recharts-tooltip-label { color: hsl(210 10% 55%) !important; font-size: 11px !important; margin-bottom: 4px !important; }
+
+    /* ── Grid lines ─────────────────────────────────── */
+    .recharts-cartesian-grid-horizontal line,
+    .recharts-cartesian-grid-vertical line {
+      stroke: hsla(222,14%,22%,.6) !important;
+      stroke-dasharray: 3 4 !important;
+    }
+
+    /* ── Axis text ──────────────────────────────────── */
+    .recharts-text.recharts-cartesian-axis-tick-value {
+      fill: hsl(210 10% 42%) !important;
+      font-size: 10px !important;
+    }
+
+    /* ── Legend ─────────────────────────────────────── */
+    .recharts-legend-item-text {
+      color: hsl(210 10% 55%) !important;
+      font-size: 11px !important;
+    }
+
+    /* ── Chart entrance animation ───────────────────── */
+    @keyframes pp-fadeUp {
+      from { opacity: 0; transform: translateY(16px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    .recharts-wrapper {
+      animation: pp-fadeUp .55s cubic-bezier(.22,.68,0,1.2) both;
+    }
+
+    /* ── Card hover lift ────────────────────────────── */
+    .bg-card {
+      transition: border-color .2s, box-shadow .2s !important;
+    }
+    .bg-card:hover {
+      border-color: hsla(195,100%,50%,.2) !important;
+      box-shadow: 0 4px 24px hsla(195,100%,40%,.08) !important;
+    }
+
+    /* ── Stat number glow ───────────────────────────── */
+    .pp-stat-pos {
+      color: #34d399 !important;
+      text-shadow: 0 0 12px hsla(158,64%,52%,.45);
+    }
+    .pp-stat-neg {
+      color: #f87171 !important;
+      text-shadow: 0 0 12px hsla(0,91%,71%,.45);
+    }
+    .pp-stat-neu {
+      color: hsl(195 100% 60%) !important;
+      text-shadow: 0 0 14px hsla(195,100%,50%,.4);
+    }
+
+    /* ── Count-up animation ─────────────────────────── */
+    @keyframes pp-numPop {
+      0%   { opacity: 0; transform: scale(.88); }
+      60%  { transform: scale(1.04); }
+      100% { opacity: 1; transform: scale(1); }
+    }
+    .pp-num-anim { animation: pp-numPop .4s cubic-bezier(.22,.68,0,1.2) both; }
+
+    /* ── Tab active indicator ───────────────────────── */
+    button[class*="border-violet-500"] {
+      position: relative;
+    }
+    button[class*="border-violet-500"]::after {
+      content: '';
+      position: absolute;
+      bottom: -1px; left: 10%; right: 10%;
+      height: 2px;
+      background: linear-gradient(90deg, transparent, hsl(262 83% 58%), transparent);
+      border-radius: 2px;
+      animation: pp-fadeUp .3s both;
+    }
+
+    /* ── Table row hover ────────────────────────────── */
+    tbody tr {
+      transition: background .15s;
+    }
+    tbody tr:hover {
+      background: hsla(195,100%,50%,.04) !important;
+    }
+
+    /* ── Button press ───────────────────────────────── */
+    button { transition: transform .1s, opacity .15s; }
+    button:active { transform: scale(.97); }
+
+    /* ── Positive/negative number auto-color ────────── */
+    .pp-pos { color: #34d399 !important; text-shadow: 0 0 8px hsla(158,64%,52%,.3); }
+    .pp-neg { color: #f87171 !important; text-shadow: 0 0 8px hsla(0,91%,71%,.3); }
+
+    /* ── Gradient text for big totals ───────────────── */
+    .pp-gradient-text {
+      background: linear-gradient(135deg, hsl(195 100% 65%), hsl(262 83% 70%));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      filter: drop-shadow(0 0 8px hsla(195,100%,50%,.25));
+    }
+
+    /* ── Shimmer loading skeleton ───────────────────── */
+    @keyframes pp-shimmer {
+      0%   { background-position: -400px 0; }
+      100% { background-position: 400px 0; }
+    }
+    .pp-skeleton {
+      background: linear-gradient(90deg, hsl(222 18% 11%) 25%, hsl(222 18% 15%) 50%, hsl(222 18% 11%) 75%);
+      background-size: 400px 100%;
+      animation: pp-shimmer 1.4s infinite;
+      border-radius: 4px;
+    }
+
+    /* ── Recharts SVG surface ───────────────────────── */
+    .recharts-surface { overflow: visible !important; }
+
+    /* ── Chart container border glow ────────────────── */
+    .recharts-responsive-container {
+      position: relative;
+    }
+
+    /* ── Portfolio value hero number ────────────────── */
+    .pp-hero { font-variant-numeric: tabular-nums; }
+
+    /* ── Pulse dot for live prices ───────────────────── */
+    @keyframes pp-pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50%       { opacity: .5; transform: scale(1.6); }
+    }
+    .pp-live-dot {
+      display: inline-block;
+      width: 6px; height: 6px;
+      background: #34d399;
+      border-radius: 50%;
+      margin-left: 6px;
+      vertical-align: middle;
+      animation: pp-pulse 2s infinite;
+      box-shadow: 0 0 6px #34d399;
+    }
+  `;
+
+  var styleEl = document.createElement('style');
+  styleEl.textContent = css;
+  document.head.appendChild(styleEl);
+
+  /* ── SVG gradient defs injected into Recharts ──── */
+  function injectSVGDefs() {
+    document.querySelectorAll('.recharts-surface').forEach(function(svg) {
+      if (svg._ppDefs) return;
+      svg._ppDefs = true;
+      var defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+      defs.innerHTML = `
+        <linearGradient id="ppGradCyan" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%"   stop-color="hsl(195,100%,55%)" stop-opacity=".55"/>
+          <stop offset="100%" stop-color="hsl(195,100%,45%)" stop-opacity=".02"/>
+        </linearGradient>
+        <linearGradient id="ppGradViolet" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%"   stop-color="hsl(262,83%,68%)" stop-opacity=".5"/>
+          <stop offset="100%" stop-color="hsl(262,83%,58%)" stop-opacity=".02"/>
+        </linearGradient>
+        <linearGradient id="ppGradGreen" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%"   stop-color="hsl(158,64%,52%)" stop-opacity=".5"/>
+          <stop offset="100%" stop-color="hsl(158,64%,42%)" stop-opacity=".02"/>
+        </linearGradient>
+        <linearGradient id="ppGradBar" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%"   stop-color="hsl(195,100%,55%)" stop-opacity=".9"/>
+          <stop offset="100%" stop-color="hsl(195,100%,35%)" stop-opacity=".6"/>
+        </linearGradient>
+        <linearGradient id="ppGradBarViolet" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%"   stop-color="hsl(262,83%,68%)" stop-opacity=".9"/>
+          <stop offset="100%" stop-color="hsl(262,83%,45%)" stop-opacity=".6"/>
+        </linearGradient>
+        <filter id="ppGlow">
+          <feGaussianBlur stdDeviation="3" result="blur"/>
+          <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+        </filter>
+      `;
+      svg.insertBefore(defs, svg.firstChild);
+    });
+  }
+
+  /* ── Apply gradient fills to area charts ────────── */
+  function enhanceAreaFills() {
+    document.querySelectorAll('.recharts-area-area').forEach(function(path, i) {
+      var grads = ['url(#ppGradCyan)', 'url(#ppGradViolet)', 'url(#ppGradGreen)'];
+      if (!path._ppFill) {
+        path._ppFill = true;
+        path.setAttribute('fill', grads[i % grads.length]);
+      }
+    });
+  }
+
+  /* ── Apply gradient fills to bars ───────────────── */
+  function enhanceBars() {
+    document.querySelectorAll('.recharts-bar-rectangle .recharts-rectangle, .recharts-bar-rectangle path').forEach(function(el, i) {
+      if (!el._ppFill) {
+        el._ppFill = true;
+        var fill = el.getAttribute('fill');
+        if (fill && fill !== 'none') {
+          var grads = ['url(#ppGradBar)', 'url(#ppGradBarViolet)', 'url(#ppGradGreen)'];
+          el.setAttribute('fill', grads[i % grads.length]);
+          el.setAttribute('rx', '2');
+        }
+      }
+    });
+  }
+
+  /* ── Auto-color positive/negative spans ─────────── */
+  function colorNumbers() {
+    document.querySelectorAll('span.num, td span, span[class*="text-"]').forEach(function(el) {
+      if (el._ppColored) return;
+      var txt = el.textContent.trim();
+      if (!txt) return;
+      var isPos = /^\+/.test(txt) || (el.className && el.className.includes('green'));
+      var isNeg = /^-/.test(txt) || (el.className && el.className.includes('red'));
+      if (isPos) { el._ppColored = true; el.classList.add('pp-pos'); }
+      else if (isNeg) { el._ppColored = true; el.classList.add('pp-neg'); }
+    });
+  }
+
+  /* ── Add live dot next to refresh buttons ────────── */
+  function injectLiveDot() {
+    document.querySelectorAll('button').forEach(function(btn) {
+      if (btn._ppLive) return;
+      if (btn.textContent.includes('↻') || btn.textContent.includes('רענן')) {
+        btn._ppLive = true;
+        var dot = document.createElement('span');
+        dot.className = 'pp-live-dot';
+        btn.appendChild(dot);
+      }
+    });
+  }
+
+  /* ── Apply gradient text to big total values ─────── */
+  function enhanceTotals() {
+    document.querySelectorAll('p, span, div').forEach(function(el) {
+      if (el._ppGrad || el.children.length > 0) return;
+      var txt = el.textContent.trim();
+      // Target large dollar amounts (the main portfolio total)
+      if (/^\$[\d,]+(\.\d+)?$/.test(txt) && parseFloat(txt.replace(/[$,]/g,'')) > 10000) {
+        if (el.className && (el.className.includes('text-2xl') || el.className.includes('text-3xl') || el.className.includes('text-4xl'))) {
+          el._ppGrad = true;
+          el.classList.add('pp-gradient-text');
+        }
+      }
+    });
+  }
+
+  /* ── MutationObserver to run enhancements ────────── */
+  var obs = new MutationObserver(function() {
+    injectSVGDefs();
+    enhanceAreaFills();
+    enhanceBars();
+    colorNumbers();
+    injectLiveDot();
+    enhanceTotals();
+  });
+  obs.observe(document.body, { childList: true, subtree: true, attributes: false });
+
+  // initial run
+  setTimeout(function() {
+    injectSVGDefs();
+    enhanceAreaFills();
+    enhanceBars();
+    colorNumbers();
+    injectLiveDot();
+    enhanceTotals();
+  }, 800);
+
+  setTimeout(function() {
+    injectSVGDefs();
+    enhanceAreaFills();
+    enhanceBars();
+    enhanceTotals();
+  }, 2500);
+
+})();
+</script>
