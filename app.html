@@ -493,12 +493,30 @@ curl "http://localhost:8000/api/usdils"<!DOCTYPE html><html lang=en><style>*,:be
     });
   }
 
-  /* ── inject buttons into the reports tab ─────────── */
-  var injected = false;
+  /* ── inject buttons into the reports tab only ────── */
+  var _exportSection = null;
+
+  function isReportsTabActive() {
+    var active = false;
+    document.querySelectorAll('button').forEach(function(btn) {
+      if (btn.textContent.trim() === 'דוחות' &&
+          btn.className.includes('border-violet-500')) active = true;
+    });
+    return active;
+  }
+
+  function removeExportSection() {
+    if (_exportSection && _exportSection.parentNode) {
+      _exportSection.parentNode.removeChild(_exportSection);
+    }
+    _exportSection = null;
+  }
 
   function injectExportButtons() {
-    if (injected) return;
-    // Find the reports section by looking for the "שמור תמונת מצב" text
+    // Only inject when דוחות tab is active
+    if (!isReportsTabActive()) { removeExportSection(); return; }
+    if (_exportSection && document.body.contains(_exportSection)) return;
+
     var allP = document.querySelectorAll('p');
     var snapshotP = null;
     allP.forEach(function(p) {
@@ -509,8 +527,8 @@ curl "http://localhost:8000/api/usdils"<!DOCTYPE html><html lang=en><style>*,:be
     var container = snapshotP.closest('div[class]');
     if (!container || !container.parentNode) return;
 
-    // Create export section
     var section = document.createElement('div');
+    section.id = 'pp-export-section';
     section.style.cssText = 'background:hsl(222 14% 11%);border:1px solid hsl(222 14% 18%);padding:16px;margin-bottom:0;';
 
     var label = document.createElement('p');
@@ -525,10 +543,10 @@ curl "http://localhost:8000/api/usdils"<!DOCTYPE html><html lang=en><style>*,:be
     xlBtn.id = 'pp-xl-btn';
     xlBtn.textContent = '⬇ ייצוא לאקסל';
     xlBtn.style.cssText = 'background:hsl(142 70% 28%);color:#fff;border:none;padding:8px 18px;font-size:13px;cursor:pointer;border-radius:4px;font-weight:600;transition:opacity .15s;';
-    xlBtn.onmouseover  = function(){ this.style.opacity = '.8'; };
-    xlBtn.onmouseout   = function(){ this.style.opacity = '1';  };
+    xlBtn.onmouseover = function(){ this.style.opacity='.8'; };
+    xlBtn.onmouseout  = function(){ this.style.opacity='1';  };
     xlBtn.onclick = function() {
-      if (typeof XLSX === 'undefined') { alert('ספריית Excel עדיין נטענת, נסה שוב בעוד שניה'); return; }
+      if (typeof XLSX === 'undefined') { alert('ספריית Excel עדיין נטענת, נסה שוב'); return; }
       exportExcel();
     };
 
@@ -536,11 +554,11 @@ curl "http://localhost:8000/api/usdils"<!DOCTYPE html><html lang=en><style>*,:be
     pdfBtn.id = 'pp-pdf-btn';
     pdfBtn.textContent = 'PDF + גרפים';
     pdfBtn.style.cssText = 'background:hsl(252 70% 42%);color:#fff;border:none;padding:8px 18px;font-size:13px;cursor:pointer;border-radius:4px;font-weight:600;transition:opacity .15s;';
-    pdfBtn.onmouseover  = function(){ this.style.opacity = '.8'; };
-    pdfBtn.onmouseout   = function(){ this.style.opacity = '1';  };
+    pdfBtn.onmouseover = function(){ this.style.opacity='.8'; };
+    pdfBtn.onmouseout  = function(){ this.style.opacity='1';  };
     pdfBtn.onclick = function() {
       if (typeof html2canvas === 'undefined' || typeof window.jspdf === 'undefined') {
-        alert('ספריות PDF עדיין נטענות, נסה שוב בעוד שניה'); return;
+        alert('ספריות PDF עדיין נטענות, נסה שוב'); return;
       }
       exportPDF();
     };
@@ -555,15 +573,11 @@ curl "http://localhost:8000/api/usdils"<!DOCTYPE html><html lang=en><style>*,:be
     section.appendChild(row);
 
     container.parentNode.insertBefore(section, container);
-    injected = true;
+    _exportSection = section;
   }
 
   var obs2 = new MutationObserver(function() {
-    // reset when tab changes
-    var allP = document.querySelectorAll('p');
-    var found = false;
-    allP.forEach(function(p){ if (p.textContent.includes('שמור תמונת מצב')) found = true; });
-    if (!found) { injected = false; return; }
+    if (!isReportsTabActive()) { removeExportSection(); return; }
     injectExportButtons();
   });
   obs2.observe(document.body, { childList: true, subtree: true });
