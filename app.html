@@ -1929,24 +1929,31 @@
 </script>
 
 <style>
+  /* ▲▼ move buttons — left strip, never covers content */
+  [data-pp-h] { padding-left: 30px !important; }
   .pp-mover {
     position: absolute;
-    left: 6px;
-    top: 50%;
-    transform: translateY(-50%);
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 28px;
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
     opacity: 0;
     transition: opacity .18s;
     z-index: 50;
+    background: hsl(222,16%,13%);
+    border-radius: 6px 0 0 6px;
   }
   [data-pp-h]:hover .pp-mover { opacity: 1; }
   .pp-mover button {
-    width: 20px;
-    height: 20px;
-    background: hsl(222,14%,18%);
-    border: 1px solid hsl(222,14%,26%);
+    width: 22px;
+    height: 22px;
+    background: hsl(222,14%,20%);
+    border: 1px solid hsl(222,14%,28%);
     border-radius: 4px;
     color: #94a3b8;
     font-size: 11px;
@@ -1959,7 +1966,7 @@
     transition: background .15s, color .15s;
   }
   .pp-mover button:hover { background: #7c3aed; color: #fff; border-color: #7c3aed; }
-  .pp-mover button:active { transform: scale(.92); }
+  .pp-mover button:active { transform: scale(.9); }
 
   /* expand all cards — no internal scroll */
   main .max-h-48,
@@ -2075,6 +2082,198 @@
 
   obs11.observe(document.body, { childList: true, subtree: true });
   setTimeout(processMain, 3500);
+
+})();
+</script>
+
+<!-- =====================================================
+     Feature Patch v12 — MA200 alerts + Mobile UI
+     ===================================================== -->
+<style>
+/* ── Mobile responsive ────────────────────────────── */
+@media (max-width: 640px) {
+  /* ensure proper viewport */
+  html { -webkit-text-size-adjust: 100%; }
+
+  /* top-level layout */
+  body { font-size: 13px !important; }
+  main { padding: 8px !important; }
+
+  /* header: stack logo + value */
+  header, [class*="sticky"][class*="top"] {
+    padding: 8px 12px !important;
+    flex-wrap: wrap !important;
+    gap: 4px !important;
+  }
+
+  /* tab nav — horizontal scroll, no wrap */
+  nav, [role="tablist"],
+  header ~ div > div:first-child {
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none !important;
+    flex-wrap: nowrap !important;
+    white-space: nowrap !important;
+  }
+  nav::-webkit-scrollbar,
+  [role="tablist"]::-webkit-scrollbar { display: none; }
+
+  nav button, [role="tablist"] button {
+    font-size: 12px !important;
+    padding: 8px 12px !important;
+    flex-shrink: 0 !important;
+  }
+
+  /* stats grid: 2 columns */
+  .grid-cols-4,
+  .md\:grid-cols-4,
+  .md\:grid-cols-5 {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+  .grid-cols-3 { grid-template-columns: repeat(2, 1fr) !important; }
+
+  /* holding table: compact */
+  table    { font-size: 11px !important; display: block; overflow-x: auto; }
+  th, td   { padding: 5px 4px !important; white-space: nowrap; }
+
+  /* cards */
+  .p-6     { padding: 10px !important; }
+  .p-5     { padding: 9px  !important; }
+  .p-4     { padding: 8px  !important; }
+  .px-8    { padding-left: 10px !important; padding-right: 10px !important; }
+  .text-3xl { font-size: 1.4rem !important; }
+  .text-xl  { font-size: 1rem  !important; }
+
+  /* insight tabs — fit 4 labels */
+  #pp-insight-tabwrap button {
+    font-size: 10px !important;
+    padding: 9px 3px !important;
+  }
+
+  /* ▲▼ bigger touch targets */
+  .pp-mover { width: 32px !important; }
+  .pp-mover button { width: 26px !important; height: 26px !important; font-size: 13px !important; }
+  [data-pp-h] { padding-left: 34px !important; }
+
+  /* MA200 alert */
+  #pp-ma200-alert { font-size: 12px !important; padding: 8px 10px !important; }
+  #pp-ma200-alert .pp-alert-chips { gap: 4px !important; }
+  #pp-ma200-alert .pp-alert-chips span { font-size: 11px !important; }
+}
+</style>
+
+<script>
+(function () {
+  'use strict';
+
+  /* ── viewport meta (ensure mobile scaling) ─────── */
+  (function() {
+    var vp = document.querySelector('meta[name="viewport"]');
+    var val = 'width=device-width, initial-scale=1';
+    if (vp) { vp.content = val; } else {
+      var m = document.createElement('meta');
+      m.name = 'viewport'; m.content = val;
+      document.head.appendChild(m);
+    }
+  })();
+
+  /* ── MA200 alert banner ─────────────────────────── */
+  var DISMISS_KEY = 'pp_ma200_alert_dismissed';
+
+  function getSyms() {
+    try {
+      var s = JSON.parse(localStorage.getItem('primo_portfolio_v6') || '{}');
+      var seen = {}, out = [];
+      (s.transactions || []).forEach(function(t) {
+        var sym = (t.ticker || t.symbol || '').toUpperCase();
+        if (sym && !seen[sym]) { seen[sym] = 1; out.push(sym); }
+      });
+      return out;
+    } catch(e) { return []; }
+  }
+
+  function dismissKey(stocks) {
+    return stocks.map(function(s) { return s.sym; }).sort().join(',');
+  }
+
+  function wasDismissed(stocks) {
+    try {
+      var d = JSON.parse(localStorage.getItem(DISMISS_KEY) || '{}');
+      var ts = d[dismissKey(stocks)];
+      return ts && (Date.now() - ts < 24 * 3600 * 1000);
+    } catch(e) { return false; }
+  }
+
+  function showAlert(stocks) {
+    if (!stocks.length || wasDismissed(stocks)) return;
+    if (document.getElementById('pp-ma200-alert')) return;
+
+    var banner = document.createElement('div');
+    banner.id = 'pp-ma200-alert';
+    banner.style.cssText = [
+      'position:fixed', 'top:0', 'left:0', 'right:0', 'z-index:9999',
+      'background:#450a0a', 'border-bottom:2px solid #ef4444',
+      'padding:10px 16px', 'display:flex', 'align-items:flex-start',
+      'justify-content:space-between', 'direction:rtl', 'gap:12px',
+      'box-shadow:0 4px 12px #0006'
+    ].join(';') + ';';
+
+    var body = document.createElement('div');
+    body.style.cssText = 'flex:1;min-width:0;';
+
+    var title = document.createElement('div');
+    title.style.cssText = 'font-weight:700;font-size:13px;color:#fca5a5;margin-bottom:6px;';
+    title.textContent = '⚠️ ' + stocks.length + ' מניות מתחת לממוצע 200 יומי';
+    body.appendChild(title);
+
+    var chips = document.createElement('div');
+    chips.className = 'pp-alert-chips';
+    chips.style.cssText = 'display:flex;flex-wrap:wrap;gap:6px;';
+    stocks.forEach(function(s) {
+      var chip = document.createElement('span');
+      chip.style.cssText = 'background:#7f1d1d;border-radius:4px;padding:2px 8px;font-size:12px;color:#fecaca;font-weight:600;white-space:nowrap;';
+      chip.textContent = s.sym + ' (' + s.pct + '%)';
+      chips.appendChild(chip);
+    });
+    body.appendChild(chips);
+    banner.appendChild(body);
+
+    var close = document.createElement('button');
+    close.textContent = '✕';
+    close.style.cssText = 'background:none;border:none;color:#fca5a5;font-size:20px;cursor:pointer;padding:0;line-height:1;flex-shrink:0;';
+    close.addEventListener('click', function() {
+      banner.remove();
+      document.body.style.paddingTop = _origPadding;
+      try {
+        var d = JSON.parse(localStorage.getItem(DISMISS_KEY) || '{}');
+        d[dismissKey(stocks)] = Date.now();
+        localStorage.setItem(DISMISS_KEY, JSON.stringify(d));
+      } catch(e) {}
+    });
+    banner.appendChild(close);
+    document.body.insertBefore(banner, document.body.firstChild);
+
+    var _origPadding = getComputedStyle(document.body).paddingTop;
+    document.body.style.paddingTop = (banner.offsetHeight + 4) + 'px';
+  }
+
+  function checkMA200() {
+    var syms = getSyms();
+    if (!syms.length) return;
+    fetch('/api/ma200?symbols=' + encodeURIComponent(syms.join(',')))
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        var below = Object.keys(data)
+          .filter(function(s) { return data[s].below; })
+          .map(function(s) { return { sym: s, pct: data[s].pct }; })
+          .sort(function(a, b) { return a.pct - b.pct; });
+        showAlert(below);
+      })
+      .catch(function() {});
+  }
+
+  setTimeout(checkMA200, 4000);
 
 })();
 </script>
