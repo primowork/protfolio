@@ -1473,3 +1473,234 @@
 
 })();
 </script>
+
+<script>
+/* =======================================================
+   Primo Portfolio Feature Patch v10
+   תובנות — מניות מתחת לMA200 + ניתוח PE
+   ======================================================= */
+(function () {
+  'use strict';
+
+  var _ma200Box = null, _peBox = null;
+  var _fetched = false;
+
+  function isInsightsTab() {
+    var active = false;
+    document.querySelectorAll('button').forEach(function(b) {
+      if (b.textContent.trim() === 'תובנות' &&
+          b.className.includes('border-violet-500')) active = true;
+    });
+    return active;
+  }
+
+  function getSymbols() {
+    try {
+      var s = JSON.parse(localStorage.getItem('primo_portfolio_v6') || '{}');
+      var txns = s.transactions || [];
+      var set = {};
+      txns.forEach(function(t) { var sym = t.ticker || t.symbol; if (sym) set[sym.toUpperCase()] = 1; });
+      return Object.keys(set);
+    } catch(e) { return []; }
+  }
+
+  function fmt2(n) { return n != null ? n.toFixed(2) : '—'; }
+  function fmtPE(n) { return n != null ? n.toFixed(1) : '—'; }
+
+  /* ── skeleton ─────────────────────────────────────── */
+  function makeSkeleton() {
+    var d = document.createElement('div');
+    d.style.cssText = 'background:linear-gradient(90deg,hsl(222,18%,11%) 25%,hsl(222,18%,15%) 50%,hsl(222,18%,11%) 75%);background-size:400px 100%;animation:pp-shimmer 1.4s infinite;border-radius:4px;height:14px;margin:6px 0;';
+    return d;
+  }
+
+  /* ── card shell ──────────────────────────────────── */
+  function makeCard(title, color) {
+    var wrap = document.createElement('div');
+    wrap.style.cssText = 'background:hsl(222,14%,10%);border:1px solid hsl(222,14%,18%);border-radius:6px;padding:14px 16px;margin-bottom:12px;direction:rtl;';
+
+    var hdr = document.createElement('div');
+    hdr.style.cssText = 'display:flex;align-items:center;gap:8px;margin-bottom:10px;';
+    hdr.innerHTML = '<span style="font-size:14px;font-weight:700;color:' + color + ';">' + title + '</span>';
+    wrap.appendChild(hdr);
+
+    var body = document.createElement('div');
+    body.className = 'pp-card-body';
+    body.appendChild(makeSkeleton());
+    body.appendChild(makeSkeleton());
+    body.appendChild(makeSkeleton());
+    wrap.appendChild(body);
+    return { wrap: wrap, body: body };
+  }
+
+  /* ── render MA200 results ───────────────────────── */
+  function renderMA200(body, data) {
+    body.innerHTML = '';
+    var syms = Object.keys(data);
+    var below = syms.filter(function(s) { return data[s].below; })
+                    .sort(function(a,b) { return data[a].pct - data[b].pct; });
+    var above = syms.filter(function(s) { return !data[s].below; })
+                    .sort(function(a,b) { return data[b].pct - data[a].pct; });
+
+    if (!below.length) {
+      var ok = document.createElement('p');
+      ok.style.cssText = 'color:#34d399;font-size:12px;margin:4px 0;';
+      ok.textContent = '✓ כל המניות מעל ממוצע 200 יומי';
+      body.appendChild(ok);
+    } else {
+      var lbl = document.createElement('p');
+      lbl.style.cssText = 'font-size:10px;color:hsl(210,10%,40%);margin-bottom:6px;text-transform:uppercase;letter-spacing:.06em;';
+      lbl.textContent = 'מתחת לממוצע 200 יומי (' + below.length + ')';
+      body.appendChild(lbl);
+
+      below.forEach(function(sym) {
+        var d = data[sym];
+        var row = document.createElement('div');
+        row.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid hsl(222,14%,16%);';
+        row.innerHTML = '<span style="font-weight:700;color:#f87171;font-size:12px;">' + sym + '</span>' +
+          '<span style="font-size:11px;color:#94a3b8;">$' + fmt2(d.price) + ' <span style="color:#f87171;">' + d.pct + '%</span> vs MA200 $' + fmt2(d.ma200) + '</span>';
+        body.appendChild(row);
+      });
+    }
+
+    if (above.length) {
+      var lbl2 = document.createElement('p');
+      lbl2.style.cssText = 'font-size:10px;color:hsl(210,10%,40%);margin:10px 0 6px;text-transform:uppercase;letter-spacing:.06em;';
+      lbl2.textContent = 'מעל ממוצע 200 יומי (' + above.length + ')';
+      body.appendChild(lbl2);
+      above.forEach(function(sym) {
+        var d = data[sym];
+        var row = document.createElement('div');
+        row.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid hsl(222,14%,16%);';
+        row.innerHTML = '<span style="font-weight:700;color:#34d399;font-size:12px;">' + sym + '</span>' +
+          '<span style="font-size:11px;color:#94a3b8;">$' + fmt2(d.price) + ' <span style="color:#34d399;">+' + d.pct + '%</span> vs MA200 $' + fmt2(d.ma200) + '</span>';
+        body.appendChild(row);
+      });
+    }
+  }
+
+  /* ── render PE results ──────────────────────────── */
+  function renderPE(body, data) {
+    body.innerHTML = '';
+    var syms = Object.keys(data).filter(function(s) { return data[s].trailingPE; });
+
+    if (!syms.length) {
+      var none = document.createElement('p');
+      none.style.cssText = 'color:#94a3b8;font-size:12px;';
+      none.textContent = 'אין נתוני PE זמינים';
+      body.appendChild(none);
+      return;
+    }
+
+    syms.sort(function(a,b) { return (data[b].trailingPE||0) - (data[a].trailingPE||0); });
+    var high = syms.filter(function(s) { return data[s].trailingPE > 35; });
+    var low  = syms.filter(function(s) { return data[s].trailingPE > 0 && data[s].trailingPE < 15; });
+    var mid  = syms.filter(function(s) { var p=data[s].trailingPE; return p>=15&&p<=35; });
+
+    function section(title, list, color) {
+      if (!list.length) return;
+      var lbl = document.createElement('p');
+      lbl.style.cssText = 'font-size:10px;color:' + color + ';margin:8px 0 4px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;';
+      lbl.textContent = title + ' (' + list.length + ')';
+      body.appendChild(lbl);
+      list.forEach(function(sym) {
+        var d = data[sym];
+        var row = document.createElement('div');
+        row.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid hsl(222,14%,16%);';
+        row.innerHTML = '<span style="font-weight:700;color:#e2e8f0;font-size:12px;">' + sym + '</span>' +
+          '<span style="font-size:11px;">' +
+          '<span style="color:' + color + ';font-weight:700;">PE ' + fmtPE(d.trailingPE) + '</span>' +
+          (d.forwardPE ? ' <span style="color:#64748b;">fwd ' + fmtPE(d.forwardPE) + '</span>' : '') +
+          '</span>';
+        body.appendChild(row);
+      });
+    }
+
+    section('🔴 יקרות מאוד  PE > 35', high, '#f87171');
+    section('🟡 הוגן  PE 15–35', mid, '#fbbf24');
+    section('🟢 זולות  PE < 15', low, '#34d399');
+  }
+
+  /* ── find anchor in תובנות tab ───────────────────── */
+  function findInsightsAnchor() {
+    var anchor = null;
+    document.querySelectorAll('div[class]').forEach(function(d) {
+      if (anchor) return;
+      if (d.textContent.includes('תובנות') && d.className.includes('p-') && d.children.length > 2) {
+        anchor = d.parentNode;
+      }
+    });
+    // fallback: first main content div inside the insights tab
+    if (!anchor) {
+      var main = document.querySelector('main, [class*="container"], [class*="max-w"]');
+      if (main) anchor = main;
+    }
+    return anchor;
+  }
+
+  function injectBoxes() {
+    if (!isInsightsTab()) {
+      if (_ma200Box && _ma200Box.parentNode) _ma200Box.parentNode.removeChild(_ma200Box);
+      if (_peBox    && _peBox.parentNode)    _peBox.parentNode.removeChild(_peBox);
+      _ma200Box = _peBox = null;
+      _fetched = false;
+      return;
+    }
+    if (_ma200Box && document.body.contains(_ma200Box)) return;
+
+    var syms = getSymbols();
+    if (!syms.length) return;
+
+    /* find a good place to insert — after last card in insights */
+    var target = null;
+    document.querySelectorAll('div').forEach(function(d) {
+      if (d.id === 'root' || d.children.length === 0) return;
+      var txt = d.textContent;
+      if (txt.includes('מגמות') || txt.includes('הישגים') || txt.includes('אחוז') || txt.includes('ביצועים')) {
+        if (d.parentNode && d.offsetParent !== null) target = d.parentNode;
+      }
+    });
+    if (!target) target = document.getElementById('root');
+    if (!target) return;
+
+    var ma200Card = makeCard('📉 מניות מתחת לממוצע 200 יומי', '#67e8f9');
+    var peCard    = makeCard('💰 ניתוח שווי — PE', '#a78bfa');
+
+    /* main element is the tab content container */
+    var main = document.querySelector('main');
+    if (!main) return;
+    main.appendChild(ma200Card.wrap);
+    main.appendChild(peCard.wrap);
+
+    _ma200Box = ma200Card.wrap;
+    _peBox    = peCard.wrap;
+
+    if (_fetched) return;
+    _fetched = true;
+
+    var q = syms.join(',');
+
+    /* fetch MA200 */
+    fetch('/api/ma200?symbols=' + encodeURIComponent(q))
+      .then(function(r) { return r.json(); })
+      .then(function(data) { renderMA200(ma200Card.body, data); })
+      .catch(function() {
+        ma200Card.body.innerHTML = '<p style="color:#f87171;font-size:12px;">שגיאה בטעינת נתוני MA200</p>';
+      });
+
+    /* fetch PE */
+    fetch('/api/pe?symbols=' + encodeURIComponent(q))
+      .then(function(r) { return r.json(); })
+      .then(function(data) { renderPE(peCard.body, data); })
+      .catch(function() {
+        peCard.body.innerHTML = '<p style="color:#f87171;font-size:12px;">שגיאה בטעינת נתוני PE</p>';
+      });
+  }
+
+  var obs10 = new MutationObserver(function() { injectBoxes(); });
+  obs10.observe(document.body, { childList: true, subtree: true });
+
+  setTimeout(injectBoxes, 2500);
+
+})();
+</script>

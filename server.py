@@ -57,6 +57,55 @@ async def get_prices(symbols: str = ""):
     logging.info(f"Got {len(prices)} prices, {len(prev)} prevClose")
     return JSONResponse({"prices": prices, "prevClose": prev})
 
+@app.get("/api/ma200")
+async def get_ma200(symbols: str = ""):
+    if not symbols:
+        return JSONResponse({})
+    sym_list = [s.strip().upper() for s in symbols.split(",") if s.strip()]
+    result = {}
+    try:
+        tickers = yf.Tickers(" ".join(sym_list))
+        for sym in sym_list:
+            try:
+                fi = tickers.tickers[sym].fast_info
+                price = fi.last_price
+                ma200 = getattr(fi, "two_hundred_day_average", None)
+                if price and ma200:
+                    pct = round((price - ma200) / ma200 * 100, 1)
+                    result[sym] = {
+                        "price": round(price, 2),
+                        "ma200": round(ma200, 2),
+                        "below": price < ma200,
+                        "pct": pct
+                    }
+            except Exception as e:
+                logging.warning(f"MA200 {sym}: {e}")
+    except Exception as e:
+        logging.error(e)
+    return JSONResponse(result)
+
+
+@app.get("/api/pe")
+async def get_pe(symbols: str = ""):
+    if not symbols:
+        return JSONResponse({})
+    sym_list = [s.strip().upper() for s in symbols.split(",") if s.strip()]
+    result = {}
+    for sym in sym_list:
+        try:
+            info = yf.Ticker(sym).info
+            trailing = info.get("trailingPE")
+            forward  = info.get("forwardPE")
+            if trailing or forward:
+                result[sym] = {
+                    "trailingPE": round(trailing, 1) if trailing else None,
+                    "forwardPE":  round(forward,  1) if forward  else None
+                }
+        except Exception as e:
+            logging.warning(f"PE {sym}: {e}")
+    return JSONResponse(result)
+
+
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8000))
     uvicorn.run("server:app", host="0.0.0.0", port=port)
