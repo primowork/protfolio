@@ -89,21 +89,29 @@ async def get_ma200(symbols: str = ""):
 async def get_pe(symbols: str = ""):
     if not symbols:
         return JSONResponse({})
+    import asyncio, concurrent.futures
     sym_list = [s.strip().upper() for s in symbols.split(",") if s.strip()]
-    result = {}
-    for sym in sym_list:
+
+    def fetch_one(sym):
         try:
             info = yf.Ticker(sym).info
             trailing = info.get("trailingPE")
             forward  = info.get("forwardPE")
             if trailing or forward:
-                result[sym] = {
+                return sym, {
                     "trailingPE": round(trailing, 1) if trailing else None,
                     "forwardPE":  round(forward,  1) if forward  else None
                 }
         except Exception as e:
             logging.warning(f"PE {sym}: {e}")
-    return JSONResponse(result)
+        return sym, None
+
+    loop = asyncio.get_event_loop()
+    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as pool:
+        tasks = [loop.run_in_executor(pool, fetch_one, s) for s in sym_list]
+        results = await asyncio.gather(*tasks)
+
+    return JSONResponse({sym: data for sym, data in results if data})
 
 
 if __name__ == "__main__":

@@ -1592,10 +1592,12 @@
       return;
     }
 
-    syms.sort(function(a,b) { return (data[b].trailingPE||0) - (data[a].trailingPE||0); });
-    var high = syms.filter(function(s) { return data[s].trailingPE > 35; });
-    var low  = syms.filter(function(s) { return data[s].trailingPE > 0 && data[s].trailingPE < 15; });
-    var mid  = syms.filter(function(s) { var p=data[s].trailingPE; return p>=15&&p<=35; });
+    // Use forward PE for classification when available (more relevant for growth stocks)
+    function effPE(d) { return d.forwardPE || d.trailingPE; }
+    syms.sort(function(a,b) { return (effPE(data[b])||0) - (effPE(data[a])||0); });
+    var high = syms.filter(function(s) { var p=effPE(data[s]); return p > 50; });
+    var low  = syms.filter(function(s) { var p=effPE(data[s]); return p > 0 && p < 15; });
+    var mid  = syms.filter(function(s) { var p=effPE(data[s]); return p>=15&&p<=50; });
 
     function section(title, list, color) {
       if (!list.length) return;
@@ -1609,16 +1611,16 @@
         row.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid hsl(222,14%,16%);';
         row.innerHTML = '<span style="font-weight:700;color:#e2e8f0;font-size:12px;">' + sym + '</span>' +
           '<span style="font-size:11px;">' +
-          '<span style="color:' + color + ';font-weight:700;">PE ' + fmtPE(d.trailingPE) + '</span>' +
-          (d.forwardPE ? ' <span style="color:#64748b;">fwd ' + fmtPE(d.forwardPE) + '</span>' : '') +
+          '<span style="color:' + color + ';font-weight:700;">fwd ' + fmtPE(d.forwardPE || d.trailingPE) + '</span>' +
+          (d.trailingPE ? ' <span style="color:#64748b;">trailing ' + fmtPE(d.trailingPE) + '</span>' : '') +
           '</span>';
         body.appendChild(row);
       });
     }
 
-    section('🔴 יקרות מאוד  PE > 35', high, '#f87171');
-    section('🟡 הוגן  PE 15–35', mid, '#fbbf24');
-    section('🟢 זולות  PE < 15', low, '#34d399');
+    section('🔴 יקרות מאוד  fwd PE > 50', high, '#f87171');
+    section('🟡 הוגן  fwd PE 15–50', mid, '#fbbf24');
+    section('🟢 זולות  fwd PE < 15', low, '#34d399');
   }
 
   /* ── find anchor in תובנות tab ───────────────────── */
@@ -1645,6 +1647,11 @@
       _ma200Box = _peBox = null;
       _fetched = false;
       return;
+    }
+    /* React may re-render main and remove our cards — detect and reset */
+    if (_ma200Box && !document.body.contains(_ma200Box)) {
+      _ma200Box = _peBox = null;
+      _fetched = false;
     }
     if (_ma200Box && document.body.contains(_ma200Box)) return;
 
