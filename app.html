@@ -2250,7 +2250,7 @@
     var banner = document.createElement('div');
     banner.id = 'pp-ma200-alert';
     banner.style.cssText = [
-      'position:sticky', 'top:0', 'left:0', 'right:0', 'z-index:9999',
+      'position:fixed', 'top:0', 'left:0', 'right:0', 'z-index:9999',
       'background:#450a0a', 'border-bottom:2px solid #ef4444',
       'padding:10px 16px', 'display:flex', 'align-items:flex-start',
       'justify-content:space-between', 'direction:rtl', 'gap:12px',
@@ -2282,6 +2282,8 @@
     close.style.cssText = 'background:none;border:none;color:#fca5a5;font-size:20px;cursor:pointer;padding:0;line-height:1;flex-shrink:0;';
     close.addEventListener('click', function() {
       banner.remove();
+      var sp = document.getElementById('pp-ma200-spacer');
+      if (sp) sp.remove();
       try {
         var d = JSON.parse(localStorage.getItem(DISMISS_KEY) || '{}');
         d[dismissKey(stocks)] = Date.now();
@@ -2290,6 +2292,17 @@
     });
     banner.appendChild(close);
     document.body.insertBefore(banner, document.body.firstChild);
+
+    /* spacer pushes page content below the fixed banner without touching React */
+    requestAnimationFrame(function() {
+      var spacer = document.getElementById('pp-ma200-spacer') || document.createElement('div');
+      spacer.id = 'pp-ma200-spacer';
+      spacer.style.cssText = 'height:' + banner.offsetHeight + 'px;flex-shrink:0;';
+      var root = document.getElementById('root');
+      if (root && !document.getElementById('pp-ma200-spacer')) {
+        document.body.insertBefore(spacer, root);
+      }
+    });
   }
 
   function checkMA200() {
