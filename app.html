@@ -1767,42 +1767,50 @@
 </script>
 
 <style>
-  .pp-drag-handle {
+  .pp-mover {
     position: absolute;
-    top: 8px;
-    left: 8px;
-    width: 22px;
-    height: 22px;
+    left: 6px;
+    top: 50%;
+    transform: translateY(-50%);
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    opacity: 0;
+    transition: opacity .18s;
+    z-index: 50;
+  }
+  [data-pp-h]:hover .pp-mover { opacity: 1; }
+  .pp-mover button {
+    width: 20px;
+    height: 20px;
+    background: hsl(222,14%,18%);
+    border: 1px solid hsl(222,14%,26%);
+    border-radius: 4px;
+    color: #94a3b8;
+    font-size: 11px;
+    cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 17px;
-    color: transparent;
-    cursor: grab;
-    user-select: none;
-    z-index: 50;
-    transition: color .18s;
-    border-radius: 4px;
+    padding: 0;
     line-height: 1;
+    transition: background .15s, color .15s;
   }
-  .pp-drag-handle:active { cursor: grabbing; }
-  .pp-drag-over-top    { border-top:    2px solid #7c3aed !important; }
-  .pp-drag-over-bottom { border-bottom: 2px solid #7c3aed !important; }
+  .pp-mover button:hover { background: #7c3aed; color: #fff; border-color: #7c3aed; }
+  .pp-mover button:active { transform: scale(.92); }
 </style>
 
 <script>
 /* =====================================================
-   Feature Patch v11 — Global drag-and-drop card reorder
+   Feature Patch v11 — Up/Down card reorder buttons
    ===================================================== */
 (function () {
   'use strict';
 
-  var ORDER_KEY  = 'pp_card_order';
-  var _dragging  = null;
-  var _busy      = false;
-  var _debounce  = null;
+  var ORDER_KEY = 'pp_card_order';
+  var _busy     = false;
+  var _debounce = null;
 
-  /* ── current active tab name ───────────────────── */
   function tabKey() {
     var name = '';
     document.querySelectorAll('button').forEach(function(b) {
@@ -1811,12 +1819,10 @@
     return name || 'default';
   }
 
-  /* ── stable text fingerprint for a card ─────────── */
   function fp(el) {
-    return (el.dataset.ppId || el.textContent.replace(/\s+/g,' ').trim().slice(0, 48));
+    return el.textContent.replace(/\s+/g,' ').trim().slice(0, 48);
   }
 
-  /* ── persist / restore order ─────────────────────── */
   function saveOrder(main) {
     var order = {};
     try { order = JSON.parse(localStorage.getItem(ORDER_KEY) || '{}'); } catch(e) {}
@@ -1833,7 +1839,6 @@
 
     var children = Array.from(main.children);
     if (children.length < 2) return;
-
     var byFp = {};
     children.forEach(function(c) { byFp[fp(c)] = c; });
 
@@ -1852,88 +1857,43 @@
     }, 80);
   }
 
-  /* ── add visual handle + drag events ──────────────── */
-  function ensureHandle(el, main) {
-    /* check if handle already in DOM */
-    if (el.querySelector('.pp-drag-handle')) return;
-
-    /* make card positioning context */
-    if (getComputedStyle(el).position === 'static') el.style.position = 'relative';
-
-    var h = document.createElement('div');
-    h.className = 'pp-drag-handle';
-    h.textContent = '⠿';
-    h.title = 'גרור לשינוי מיקום';
-    el.appendChild(h);
-
-    /* show/hide on hover */
-    el.addEventListener('mouseenter', function() { h.style.color = 'rgba(100,116,139,.65)'; });
-    el.addEventListener('mouseleave', function() {
-      if (_dragging !== el) h.style.color = 'transparent';
-    });
-
-    /* only start drag when handle is grabbed */
-    h.addEventListener('mousedown', function(e) {
-      el.setAttribute('draggable', 'true');
-      e.stopPropagation();
-    });
-    el.addEventListener('mouseup', function() {
-      el.setAttribute('draggable', 'false');
-    });
-
-    /* drag lifecycle */
-    el.addEventListener('dragstart', function(e) {
-      _dragging = el;
-      e.dataTransfer.effectAllowed = 'move';
-      setTimeout(function() {
-        el.style.opacity = '0.45';
-        el.style.boxShadow = '0 0 0 2px #7c3aed';
-      }, 0);
-    });
-
-    el.addEventListener('dragend', function() {
-      el.style.opacity = '';
-      el.style.boxShadow = '';
-      el.setAttribute('draggable', 'false');
-      h.style.color = 'transparent';
-      _dragging = null;
-      document.querySelectorAll('.pp-drag-over-top,.pp-drag-over-bottom').forEach(function(x) {
-        x.classList.remove('pp-drag-over-top', 'pp-drag-over-bottom');
-      });
-      saveOrder(main);
-    });
-
-    el.addEventListener('dragover', function(e) {
-      if (!_dragging || _dragging === el) return;
-      e.preventDefault();
-      e.dataTransfer.dropEffect = 'move';
-
-      document.querySelectorAll('.pp-drag-over-top,.pp-drag-over-bottom').forEach(function(x) {
-        x.classList.remove('pp-drag-over-top', 'pp-drag-over-bottom');
-      });
-
-      var rect = el.getBoundingClientRect();
-      var before = e.clientY < rect.top + rect.height / 2;
-      el.classList.add(before ? 'pp-drag-over-top' : 'pp-drag-over-bottom');
-
-      if (before) {
-        if (_dragging.nextSibling !== el) main.insertBefore(_dragging, el);
-      } else {
-        if (_dragging.previousSibling !== el) main.insertBefore(_dragging, el.nextSibling || null);
-      }
-    });
-
-    el.addEventListener('dragleave', function() {
-      el.classList.remove('pp-drag-over-top', 'pp-drag-over-bottom');
-    });
+  function moveCard(el, dir, main) {
+    if (dir === -1 && el.previousElementSibling) {
+      main.insertBefore(el, el.previousElementSibling);
+    } else if (dir === 1 && el.nextElementSibling) {
+      main.insertBefore(el.nextElementSibling, el);
+    }
+    saveOrder(main);
   }
 
-  /* ── process all main > children ─────────────────── */
+  function ensureButtons(el, main) {
+    if (el.querySelector('.pp-mover')) return;
+    if (getComputedStyle(el).position === 'static') el.style.position = 'relative';
+    el.dataset.ppH = '1';
+
+    var mover = document.createElement('div');
+    mover.className = 'pp-mover';
+
+    var up = document.createElement('button');
+    up.textContent = '▲';
+    up.title = 'הזז למעלה';
+    up.addEventListener('click', function(e) { e.stopPropagation(); moveCard(el, -1, main); });
+
+    var dn = document.createElement('button');
+    dn.textContent = '▼';
+    dn.title = 'הזז למטה';
+    dn.addEventListener('click', function(e) { e.stopPropagation(); moveCard(el, 1, main); });
+
+    mover.appendChild(up);
+    mover.appendChild(dn);
+    el.appendChild(mover);
+  }
+
   function processMain() {
     var main = document.querySelector('main');
     if (!main) return;
     Array.from(main.children).forEach(function(c) {
-      if (c.nodeType === 1) ensureHandle(c, main);
+      if (c.nodeType === 1) ensureButtons(c, main);
     });
     restoreOrder(main);
   }
