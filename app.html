@@ -2537,22 +2537,20 @@
   #pp-premarket-bar .pp-pm-chip .pp-pm-neg  { color: #f87171; }
   #pp-premarket-bar .pp-pm-chip .pp-pm-icon { font-size: 10px; opacity: .8; }
 
-  /* inline badge injected into holdings table cells */
+  /* pre-market sub-line inside the current-price cell */
   .pp-pm-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 2px;
+    display: block;
     font-size: 10px;
-    margin-right: 4px;
-    padding: 1px 5px;
+    margin-top: 2px;
+    padding: 1px 4px;
     border-radius: 3px;
     background: hsl(222,14%,15%);
-    border: 1px solid hsl(222,14%,24%);
-    vertical-align: middle;
+    border: 1px solid hsl(222,14%,22%);
     white-space: nowrap;
+    width: fit-content;
   }
-  .pp-pm-badge.pos { border-color: #34d39844; color: #34d399; }
-  .pp-pm-badge.neg { border-color: #f8717144; color: #f87171; }
+  .pp-pm-badge.pos { border-color: #34d39855; color: #34d399; }
+  .pp-pm-badge.neg { border-color: #f8717155; color: #f87171; }
 
   @media (max-width: 640px) {
     #pp-premarket-bar { padding: 5px 10px; gap: 5px; }
@@ -2662,10 +2660,23 @@
     });
     if (!syms.length) return;
 
+    /* find the "מחיר נוכחי" column index from the header row */
+    var currentPriceIdx = -1;
+    var headerRow = document.querySelector('table thead tr');
+    if (headerRow) {
+      Array.from(headerRow.querySelectorAll('th')).forEach(function(th, i) {
+        var txt = th.textContent.trim();
+        if (txt.indexOf('מחיר נוכחי') !== -1 || txt.indexOf('current') !== -1 || txt === 'מחיר') {
+          currentPriceIdx = i;
+        }
+      });
+    }
+
     document.querySelectorAll('table tbody tr').forEach(function(row) {
-      // find which symbol this row belongs to
-      var cells = row.querySelectorAll('td');
+      var cells = Array.from(row.querySelectorAll('td'));
       if (!cells.length) return;
+
+      // find which symbol this row belongs to
       var sym = null;
       cells.forEach(function(td) {
         var txt = td.textContent.trim().toUpperCase();
@@ -2676,18 +2687,21 @@
       var d = data[sym];
       var pct = d.changePct;
 
-      // inject badge into the price cell (typically the 4th cell, but search for $)
-      var priceCell = null;
-      cells.forEach(function(td) {
-        if (/\$[\d,]+/.test(td.textContent) && !priceCell) priceCell = td;
-      });
-      if (!priceCell) priceCell = cells[cells.length > 3 ? 3 : cells.length - 1];
+      // use header-detected index; fallback: cell whose text matches the regular market price
+      var priceCell = currentPriceIdx >= 0 ? cells[currentPriceIdx] : null;
+      if (!priceCell && d.regularPrice) {
+        var regStr = d.regularPrice.toFixed(2);
+        cells.forEach(function(td) {
+          if (td.textContent.indexOf(regStr) !== -1) priceCell = td;
+        });
+      }
+      if (!priceCell) return; // don't guess
 
       var badge = document.createElement('span');
       badge.className = 'pp-pm-badge ' + (pct == null ? '' : pct >= 0 ? 'pos' : 'neg');
       badge.title = 'פרה/אחרי שעות מסחר';
-      badge.innerHTML = '🌙 $' + d.price.toFixed(2) +
-        (pct != null ? ' ' + (pct >= 0 ? '+' : '') + pct.toFixed(1) + '%' : '');
+      badge.textContent = '🌙 $' + d.price.toFixed(2) +
+        (pct != null ? '  ' + (pct >= 0 ? '+' : '') + pct.toFixed(1) + '%' : '');
       priceCell.appendChild(badge);
     });
   }
