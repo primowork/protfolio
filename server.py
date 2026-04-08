@@ -101,20 +101,55 @@ async def get_usdils():
 async def get_prices(symbols: str = ""):
     if not symbols:
         return JSONResponse({"prices": {}, "prevClose": {}})
-    sym_list = [s.strip() for s in symbols.split(",") if s.strip()]
+    import pandas as pd
+    sym_list = [s.strip().upper() for s in symbols.split(",") if s.strip()]
     prices, prev = {}, {}
+
+    # ── current prices: fast_info.last_price (real-time) ─────────────────
     try:
         tickers = yf.Tickers(" ".join(sym_list))
         for sym in sym_list:
             try:
-                info = tickers.tickers[sym].fast_info
-                if info.last_price: prices[sym] = info.last_price
-                if info.previous_close: prev[sym] = info.previous_close
+                lp = tickers.tickers[sym].fast_info.last_price
+                if lp: prices[sym] = lp
             except Exception as e:
-                logging.warning(f"{sym}: {e}")
+                logging.warning(f"price {sym}: {e}")
     except Exception as e:
         logging.error(e)
-    logging.info(f"Got {len(prices)} prices, {len(prev)} prevClose")
+
+    # ── prevClose: yf.download history ───────────────────────────────────
+    # fast_info.previous_close returns the WRONG date's close (yfinance bug).
+    # yf.download includes today's close as iloc[-1] and yesterday's close as
+    # iloc[-2], which matches Google Finance's "previous close" exactly.
+    try:
+        hist = yf.download(sym_list, period="5d", auto_adjust=True,
+                           progress=False, threads=True)
+        if not hist.empty:
+            closes = hist["Close"]
+            # iloc[-2] = previous completed session close (confirmed matches GF)
+            if len(closes) >= 2:
+                prev_row = closes.iloc[-2]
+                if isinstance(prev_row, pd.Series):     # multiple tickers
+                    for sym in sym_list:
+                        if sym in prev_row.index:
+                            v = prev_row[sym]
+                            if pd.notna(v): prev[sym] = float(v)
+                else:                                   # single ticker
+                    if pd.notna(prev_row): prev[sym_list[0]] = float(prev_row)
+    except Exception as e:
+        logging.error(f"prevClose download: {e}")
+        # fallback: regularMarketPreviousClose from .info (also correct)
+        import concurrent.futures
+        def _pc(sym):
+            try:
+                v = yf.Ticker(sym).info.get("regularMarketPreviousClose")
+                return sym, v
+            except: return sym, None
+        with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+            for sym, v in pool.map(_pc, sym_list):
+                if v: prev[sym] = v
+
+    logging.info(f"prices={len(prices)} prevClose={len(prev)}")
     return JSONResponse({"prices": prices, "prevClose": prev})
 
 @app.get("/api/ma200")
