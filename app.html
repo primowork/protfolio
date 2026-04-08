@@ -5,6 +5,12 @@ html { font-size: 135% !important; }
 /* ── TradingView ticker links ──────────────────────────── */
 a[href*="tradingview"] { text-decoration: none !important; transition: color .15s; }
 a[href*="tradingview"]:hover { color: #4ade80 !important; }
+/* ── Detail row smooth open ────────────────────────────── */
+@keyframes pp-detail-in {
+  from { opacity: 0; max-height: 0; transform: translateY(-6px); }
+  to   { opacity: 1; max-height: 120px; transform: translateY(0); }
+}
+td[colspan="8"] { animation: pp-detail-in 0.28s cubic-bezier(0.22,1,0.36,1); overflow: hidden; }
 </style>
     <div id=root></div>
     <script>
@@ -249,12 +255,14 @@ a[href*="tradingview"]:hover { color: #4ade80 !important; }
       return state.sortDir * (av - bv);
     });
 
+    obs.disconnect();
     var frag = document.createDocumentFragment();
     groups.forEach(function(g) {
       frag.appendChild(g.main);
       if (g.desc) frag.appendChild(g.desc);
     });
     tbody.appendChild(frag);
+    obs.observe(document.body, { childList: true, subtree: true });
 
     groups.forEach(function(g) {
       var dc = g.main.cells[7], snap = g.main._ppSnap;
@@ -305,12 +313,15 @@ a[href*="tradingview"]:hover { color: #4ade80 !important; }
       if (bv === null) bv = _state.sortDir > 0 ? Infinity : -Infinity;
       return _state.sortDir * (av - bv);
     });
+    /* disconnect observer during re-order so we don't fight React */
+    obs.disconnect();
     var frag = document.createDocumentFragment();
     groups.forEach(function(g) {
       frag.appendChild(g.main);
       if (g.desc) frag.appendChild(g.desc);
     });
     tbody.appendChild(frag);
+    obs.observe(document.body, { childList: true, subtree: true });
 
     /* refresh day column display */
     groups.forEach(function(g) {
