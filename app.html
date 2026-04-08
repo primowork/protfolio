@@ -42,6 +42,11 @@
     var raw = localStorage.getItem(KEY);
     var state = raw ? JSON.parse(raw) : {};
     state.ilsDeposits = DEPOSITS;
+    /* ensure required fields exist so React never crashes on first visit */
+    if (!Array.isArray(state.transactions)) state.transactions = [];
+    if (!Array.isArray(state.snapshots))    state.snapshots    = [];
+    if (!state.prices)                      state.prices       = {};
+    if (!state.goalILS)                     state.goalILS      = 100000;
     localStorage.setItem(KEY, JSON.stringify(state));
   } catch(e) { console.error('Deposit seed error:', e); }
 })();
