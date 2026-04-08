@@ -1238,7 +1238,13 @@
   }
 
   function saveReports(list) {
-    localStorage.setItem(REPORTS_KEY, JSON.stringify(list));
+    try {
+      localStorage.setItem(REPORTS_KEY, JSON.stringify(list));
+    } catch(e) {
+      if (e.name === 'QuotaExceededError' || e.name === 'NS_ERROR_DOM_QUOTA_REACHED' || (e.code && e.code === 22)) {
+        alert('⚠️ הדוח לא נשמר — נגמר שטח האחסון בדפדפן.\nמחק דוחות ישנים כדי לפנות מקום.');
+      }
+    }
   }
 
   function removeSection() {
@@ -1507,6 +1513,14 @@
   function fmt2(n) { return n != null ? n.toFixed(2) : '—'; }
   function fmtPE(n) { return n != null ? n.toFixed(1) : '—'; }
 
+  /* forward PE sanity check — returns forwardPE only when plausible */
+  function saneFwd(d) {
+    if (!d || !d.forwardPE) return null;
+    if (d.forwardPE < 3) return null;                               // unrealistically low
+    if (d.trailingPE && d.trailingPE / d.forwardPE > 5) return null; // > 5× divergence from trailing
+    return d.forwardPE;
+  }
+
   /* ── skeleton ─────────────────────────────────────── */
   function makeSkeleton() {
     var d = document.createElement('div');
@@ -1592,8 +1606,8 @@
       return;
     }
 
-    // Use forward PE for classification when available (more relevant for growth stocks)
-    function effPE(d) { return d.forwardPE || d.trailingPE; }
+    // Use forward PE only when it passes sanity check; always fall back to trailing
+    function effPE(d) { return saneFwd(d) || d.trailingPE; }
     syms.sort(function(a,b) { return (effPE(data[b])||0) - (effPE(data[a])||0); });
     var high = syms.filter(function(s) { var p=effPE(data[s]); return p > 50; });
     var low  = syms.filter(function(s) { var p=effPE(data[s]); return p > 0 && p < 15; });
@@ -1609,10 +1623,16 @@
         var d = data[sym];
         var row = document.createElement('div');
         row.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid hsl(222,14%,16%);';
+        var fwd = saneFwd(d);
+        var ttmOnly = !fwd;
         row.innerHTML = '<span style="font-weight:700;color:#e2e8f0;font-size:12px;">' + sym + '</span>' +
           '<span style="font-size:11px;">' +
-          '<span style="color:' + color + ';font-weight:700;">fwd ' + fmtPE(d.forwardPE || d.trailingPE) + '</span>' +
-          (d.trailingPE ? ' <span style="color:#64748b;">trailing ' + fmtPE(d.trailingPE) + '</span>' : '') +
+          (fwd
+            ? '<span style="color:' + color + ';font-weight:700;">fwd ' + fmtPE(fwd) + '</span>' +
+              ' <span style="color:#64748b;">TTM ' + fmtPE(d.trailingPE) + '</span>'
+            : '<span style="color:' + color + ';font-weight:700;">TTM ' + fmtPE(d.trailingPE) + '</span>' +
+              ' <span style="color:#475569;font-size:10px;border:1px solid #334155;border-radius:3px;padding:1px 4px;">TTM only</span>'
+          ) +
           '</span>';
         body.appendChild(row);
       });
@@ -1730,14 +1750,15 @@
         else          { sc -= 2; neg.push('מתחת MA200 ' + m.pct + '%'); }
       }
 
-      /* PE — valuation */
+      /* PE — valuation (forward only if passes sanity check, always fall back to trailing) */
       var p = peData[s];
-      var ep = p ? (p.forwardPE || p.trailingPE) : null;
+      var ep = p ? (saneFwd(p) || p.trailingPE) : null;
+      var epLabel = p && saneFwd(p) ? 'fwd PE' : 'TTM PE';
       if (ep) {
-        if      (ep < 15) { sc += 3; pos.push('PE ' + ep + ' (זול)'); }
-        else if (ep < 25) { sc += 2; pos.push('PE ' + ep + ' (הוגן)'); }
+        if      (ep < 15) { sc += 3; pos.push(epLabel + ' ' + fmtPE(ep) + ' (זול)'); }
+        else if (ep < 25) { sc += 2; pos.push(epLabel + ' ' + fmtPE(ep) + ' (הוגן)'); }
         else if (ep < 40) { sc += 1; }
-        else if (ep > 60) { sc -= 2; neg.push('PE ' + ep + ' (יקר מאוד)'); }
+        else if (ep > 60) { sc -= 2; neg.push(epLabel + ' ' + fmtPE(ep) + ' (יקר מאוד)'); }
       }
 
       /* Revenue — growth */
@@ -1996,7 +2017,15 @@
   }
 
   function fp(el) {
-    return el.textContent.replace(/\s+/g,' ').trim().slice(0, 48);
+    // Use the first heading/bold element — its text is stable and doesn't change as data loads
+    var h = el.querySelector('h1,h2,h3,h4,h5,th');
+    if (!h) h = el.querySelector('[class*="font-bold"],[class*="font-semibold"],[class*="text-lg"],[class*="text-xl"]');
+    if (h) {
+      var t = h.textContent.replace(/\s+/g,' ').trim();
+      if (t.length >= 2) return 'hd:' + t.slice(0, 40);
+    }
+    // Fallback: strip numbers/prices, use only stable Hebrew/Latin label text
+    return 'tx:' + el.textContent.replace(/[\d.,₪$%+\-\u200B-\u200D]/g,'').replace(/\s+/g,' ').trim().slice(0, 40);
   }
 
   function saveOrder(main) {
@@ -2212,7 +2241,7 @@
     var banner = document.createElement('div');
     banner.id = 'pp-ma200-alert';
     banner.style.cssText = [
-      'position:fixed', 'top:0', 'left:0', 'right:0', 'z-index:9999',
+      'position:sticky', 'top:0', 'left:0', 'right:0', 'z-index:9999',
       'background:#450a0a', 'border-bottom:2px solid #ef4444',
       'padding:10px 16px', 'display:flex', 'align-items:flex-start',
       'justify-content:space-between', 'direction:rtl', 'gap:12px',
@@ -2244,7 +2273,6 @@
     close.style.cssText = 'background:none;border:none;color:#fca5a5;font-size:20px;cursor:pointer;padding:0;line-height:1;flex-shrink:0;';
     close.addEventListener('click', function() {
       banner.remove();
-      document.body.style.paddingTop = _origPadding;
       try {
         var d = JSON.parse(localStorage.getItem(DISMISS_KEY) || '{}');
         d[dismissKey(stocks)] = Date.now();
@@ -2253,9 +2281,6 @@
     });
     banner.appendChild(close);
     document.body.insertBefore(banner, document.body.firstChild);
-
-    var _origPadding = getComputedStyle(document.body).paddingTop;
-    document.body.style.paddingTop = (banner.offsetHeight + 4) + 'px';
   }
 
   function checkMA200() {
@@ -2274,6 +2299,171 @@
   }
 
   setTimeout(checkMA200, 4000);
+
+})();
+</script>
+
+<!-- =====================================================
+     Feature Patch v13 — Collapsible cards
+     ===================================================== -->
+<style>
+  /* Collapse toggle button */
+  .pp-collapser {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    z-index: 60;
+    width: 22px;
+    height: 22px;
+    background: hsl(222,14%,20%);
+    border: 1px solid hsl(222,14%,28%);
+    border-radius: 4px;
+    color: #94a3b8;
+    font-size: 11px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    line-height: 1;
+    opacity: 0;
+    transition: opacity .18s, background .15s, color .15s;
+  }
+  [data-pp-h]:hover .pp-collapser { opacity: 1; }
+  .pp-collapser:hover { background: #7c3aed; color: #fff; border-color: #7c3aed; }
+  .pp-collapser:active { transform: scale(.9); }
+
+  /* When collapsed: show only a fixed height, hide overflow */
+  [data-pp-collapsed] {
+    max-height: 54px !important;
+    overflow: hidden !important;
+    cursor: pointer;
+  }
+  /* Keep the collapser button always visible when collapsed */
+  [data-pp-collapsed] .pp-collapser { opacity: 1 !important; }
+  /* Keep the mover buttons visible when collapsed */
+  [data-pp-collapsed] .pp-mover { opacity: 1 !important; }
+
+  /* Mobile: bigger touch target */
+  @media (max-width: 640px) {
+    .pp-collapser { width: 26px !important; height: 26px !important; font-size: 13px !important; opacity: 1 !important; }
+    [data-pp-h] { padding-right: 32px !important; }
+  }
+</style>
+
+<script>
+/* =====================================================
+   Feature Patch v13 — Collapsible cards
+   ===================================================== */
+(function () {
+  'use strict';
+
+  var COLLAPSE_KEY = 'pp_collapsed_cards';
+
+  /* ── stable card id ───────────────────────────────── */
+  function cardId(el) {
+    // Reuse the same stable-text logic as v11's fp()
+    var h = el.querySelector('h1,h2,h3,h4,h5,th');
+    if (!h) h = el.querySelector('[class*="font-bold"],[class*="font-semibold"],[class*="text-lg"],[class*="text-xl"]');
+    if (h) {
+      var t = h.textContent.replace(/\s+/g,' ').trim();
+      if (t.length >= 2) return 'hd:' + t.slice(0, 40);
+    }
+    return 'tx:' + el.textContent.replace(/[\d.,₪$%+\-\u200B-\u200D]/g,'').replace(/\s+/g,' ').trim().slice(0, 40);
+  }
+
+  /* ── persist collapsed state ─────────────────────── */
+  function getCollapsed() {
+    try { return JSON.parse(localStorage.getItem(COLLAPSE_KEY) || '{}'); } catch(e) { return {}; }
+  }
+
+  function setCollapsed(id, val) {
+    var state = getCollapsed();
+    if (val) state[id] = 1; else delete state[id];
+    try { localStorage.setItem(COLLAPSE_KEY, JSON.stringify(state)); } catch(e) {}
+  }
+
+  /* ── toggle collapse on a card ───────────────────── */
+  function toggleCollapse(el, btn) {
+    var id = cardId(el);
+    var now = el.hasAttribute('data-pp-collapsed');
+    if (now) {
+      el.removeAttribute('data-pp-collapsed');
+      btn.textContent = '▾';
+      btn.title = 'כווץ';
+      setCollapsed(id, false);
+    } else {
+      el.setAttribute('data-pp-collapsed', '1');
+      btn.textContent = '▸';
+      btn.title = 'הרחב';
+      setCollapsed(id, true);
+    }
+  }
+
+  /* ── inject collapser button ─────────────────────── */
+  function ensureCollapser(el) {
+    if (el.querySelector('.pp-collapser')) return;
+    // card must already be position:relative (ensured by v11)
+    var id = cardId(el);
+    var collapsed = getCollapsed();
+
+    var btn = document.createElement('button');
+    btn.className = 'pp-collapser';
+
+    var isCollapsed = !!collapsed[id];
+    if (isCollapsed) {
+      el.setAttribute('data-pp-collapsed', '1');
+      btn.textContent = '▸';
+      btn.title = 'הרחב';
+    } else {
+      btn.textContent = '▾';
+      btn.title = 'כווץ';
+    }
+
+    btn.addEventListener('click', function(e) {
+      e.stopPropagation();
+      toggleCollapse(el, btn);
+    });
+
+    el.appendChild(btn);
+  }
+
+  /* ── click on collapsed card expands it ─────────── */
+  function onCardClick(e) {
+    var el = e.currentTarget;
+    if (!el.hasAttribute('data-pp-collapsed')) return;
+    // Don't expand if clicking the buttons themselves
+    if (e.target.closest('.pp-collapser,.pp-mover')) return;
+    var btn = el.querySelector('.pp-collapser');
+    if (btn) toggleCollapse(el, btn);
+  }
+
+  /* ── process all main cards ──────────────────────── */
+  var _busy13 = false;
+  var _deb13  = null;
+
+  function processMain13() {
+    var main = document.querySelector('main');
+    if (!main) return;
+    Array.from(main.children).forEach(function(c) {
+      if (c.nodeType !== 1) return;
+      ensureCollapser(c);
+      // register click-to-expand only once
+      if (!c._ppCollapseClick) {
+        c._ppCollapseClick = true;
+        c.addEventListener('click', onCardClick);
+      }
+    });
+  }
+
+  var obs13 = new MutationObserver(function() {
+    if (_busy13) return;
+    clearTimeout(_deb13);
+    _deb13 = setTimeout(processMain13, 400);
+  });
+
+  obs13.observe(document.body, { childList: true, subtree: true });
+  setTimeout(processMain13, 4000);
 
 })();
 </script>
