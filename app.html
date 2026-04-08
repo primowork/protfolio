@@ -38,6 +38,25 @@
     {id:'ils16',   date:'2026-03-09', amount:4000,  rate:3.086, note:'הפקדה IBKR — ILS→USD',         who:'אלעד'}
   ];
 
+  var TRANSACTIONS = [
+    {id:'t_spy',  ticker:'SPY',  type:'buy', shares:41,  price:443.93, date:'2022-01-01', broker:'פסגות'},
+    {id:'t_nvda', ticker:'NVDA', type:'buy', shares:130, price:44.96,  date:'2022-01-01', broker:'פסגות'},
+    {id:'t_qqq',  ticker:'QQQ',  type:'buy', shares:30,  price:375.89, date:'2022-01-01', broker:'פסגות'},
+    {id:'t_goog', ticker:'GOOG', type:'buy', shares:36,  price:149.11, date:'2022-01-01', broker:'פסגות'},
+    {id:'t_aapl', ticker:'AAPL', type:'buy', shares:35,  price:158.10, date:'2022-01-01', broker:'פסגות'},
+    {id:'t_amzn', ticker:'AMZN', type:'buy', shares:37,  price:131.06, date:'2022-01-01', broker:'פסגות'},
+    {id:'t_nflx', ticker:'NFLX', type:'buy', shares:70,  price:71.78,  date:'2022-01-01', broker:'פסגות'},
+    {id:'t_meta', ticker:'META', type:'buy', shares:12,  price:606.03, date:'2022-01-01', broker:'פסגות'},
+    {id:'t_msft', ticker:'MSFT', type:'buy', shares:18,  price:354.88, date:'2022-01-01', broker:'פסגות'},
+    {id:'t_well', ticker:'WELL', type:'buy', shares:33,  price:178.59, date:'2022-01-01', broker:'פסגות'},
+    {id:'t_tsla', ticker:'TSLA', type:'buy', shares:19,  price:248.55, date:'2022-01-01', broker:'פסגות'},
+    {id:'t_vrt',  ticker:'VRT',  type:'buy', shares:25,  price:111.26, date:'2022-01-01', broker:'פסגות'},
+    {id:'t_amd',  ticker:'AMD',  type:'buy', shares:25,  price:236.38, date:'2022-01-01', broker:'פסגות'},
+    {id:'t_pltr', ticker:'PLTR', type:'buy', shares:34,  price:106.33, date:'2022-01-01', broker:'פסגות'},
+    {id:'t_crm',  ticker:'CRM',  type:'buy', shares:27,  price:194.48, date:'2022-01-01', broker:'פסגות'},
+    {id:'t_bn',   ticker:'BN',   type:'buy', shares:90,  price:41.13,  date:'2022-01-01', broker:'פסגות'}
+  ];
+
   try {
     var raw = localStorage.getItem(KEY);
     /* migrate any stored "Robinhood" strings → "פסגות" before React reads them */
@@ -49,6 +68,8 @@
     state.ilsDeposits = DEPOSITS;
     /* ensure required fields exist so React never crashes on first visit */
     if (!Array.isArray(state.transactions)) state.transactions = [];
+    /* seed holdings only when empty — never overwrite user-entered data */
+    if (state.transactions.length === 0) state.transactions = TRANSACTIONS;
     if (!Array.isArray(state.snapshots))    state.snapshots    = [];
     if (!state.prices)                      state.prices       = {};
     if (!state.goalILS)                     state.goalILS      = 100000;
