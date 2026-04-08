@@ -2,6 +2,9 @@
     <style id="pp-font-scale">
 /* ── Font Scale ×2 ─────────────────────────────────────── */
 html { font-size: 135% !important; }
+/* ── TradingView ticker links ──────────────────────────── */
+a[href*="tradingview"] { text-decoration: none !important; transition: color .15s; }
+a[href*="tradingview"]:hover { color: #4ade80 !important; }
 </style>
     <div id=root></div>
     <script>
@@ -1661,7 +1664,7 @@ html { font-size: 135% !important; }
         var d = data[sym];
         var row = document.createElement('div');
         row.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid hsl(222,14%,16%);';
-        row.innerHTML = '<a href="https://www.tradingview.com/chart/?symbol=' + sym + '" target="_blank" rel="noopener noreferrer" style="font-weight:700;color:#f87171;font-size:16.2px;text-decoration:underline dotted;text-underline-offset:3px;">' + sym + '</a>' +
+        row.innerHTML = '<a href="https://www.tradingview.com/chart/?symbol=' + sym + '" target="_blank" rel="noopener noreferrer" style="font-weight:700;color:#f87171;font-size:16.2px;text-decoration:none;transition:color .15s;">' + sym + '</a>' +
           '<span style="font-size:14.8px;color:#94a3b8;">$' + fmt2(d.price) + ' <span style="color:#f87171;">' + d.pct + '%</span> vs MA200 $' + fmt2(d.ma200) + '</span>';
         body.appendChild(row);
       });
@@ -1676,7 +1679,7 @@ html { font-size: 135% !important; }
         var d = data[sym];
         var row = document.createElement('div');
         row.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid hsl(222,14%,16%);';
-        row.innerHTML = '<a href="https://www.tradingview.com/chart/?symbol=' + sym + '" target="_blank" rel="noopener noreferrer" style="font-weight:700;color:#34d399;font-size:16.2px;text-decoration:underline dotted;text-underline-offset:3px;">' + sym + '</a>' +
+        row.innerHTML = '<a href="https://www.tradingview.com/chart/?symbol=' + sym + '" target="_blank" rel="noopener noreferrer" style="font-weight:700;color:#34d399;font-size:16.2px;text-decoration:none;transition:color .15s;">' + sym + '</a>' +
           '<span style="font-size:14.8px;color:#94a3b8;">$' + fmt2(d.price) + ' <span style="color:#34d399;">+' + d.pct + '%</span> vs MA200 $' + fmt2(d.ma200) + '</span>';
         body.appendChild(row);
       });
@@ -1715,7 +1718,7 @@ html { font-size: 135% !important; }
         row.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid hsl(222,14%,16%);';
         var fwd = saneFwd(d);
         var ttmOnly = !fwd;
-        row.innerHTML = '<a href="https://www.tradingview.com/chart/?symbol=' + sym + '" target="_blank" rel="noopener noreferrer" style="font-weight:700;color:#e2e8f0;font-size:16.2px;text-decoration:underline dotted;text-underline-offset:3px;">' + sym + '</a>' +
+        row.innerHTML = '<a href="https://www.tradingview.com/chart/?symbol=' + sym + '" target="_blank" rel="noopener noreferrer" style="font-weight:700;color:#e2e8f0;font-size:16.2px;text-decoration:none;transition:color .15s;">' + sym + '</a>' +
           '<span style="font-size:14.8px;">' +
           (fwd
             ? '<span style="color:' + color + ';font-weight:700;">fwd ' + fmtPE(fwd) + '</span>' +
@@ -1903,7 +1906,7 @@ html { font-size: 135% !important; }
         card.style.cssText = 'background:hsl(222,14%,12%);border-radius:5px;padding:8px 10px;margin-bottom:6px;border-right:3px solid '+color+';';
         var sign = item.sc > 0 ? '+' : '';
         card.innerHTML = '<div style="display:flex;justify-content:space-between;margin-bottom:4px;">' +
-          '<a href="https://www.tradingview.com/chart/?symbol=' + item.sym + '" target="_blank" rel="noopener noreferrer" style="font-weight:700;font-size:18.9px;color:#e2e8f0;text-decoration:underline dotted;text-underline-offset:3px;">' + item.sym + '</a>' +
+          '<a href="https://www.tradingview.com/chart/?symbol=' + item.sym + '" target="_blank" rel="noopener noreferrer" style="font-weight:700;font-size:18.9px;color:#e2e8f0;text-decoration:none;transition:color .15s;">' + item.sym + '</a>' +
           '<span style="font-size:14.8px;font-weight:700;color:'+color+';">ציון ' + sign + item.sc + '</span>' +
         '</div>';
         function makeChips(factors, chipColor, bg) {
@@ -2860,7 +2863,7 @@ html { font-size: 135% !important; }
     a.target = '_blank';
     a.rel = 'noopener noreferrer';
     a.title = 'TradingView — ' + sym;
-    a.style.cssText = 'color:inherit;text-decoration:underline dotted;text-underline-offset:3px;cursor:pointer;';
+    a.style.cssText = 'color:inherit;text-decoration:none;transition:color .15s;cursor:pointer;';
     a.textContent = sym;
     return a;
   }
