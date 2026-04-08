@@ -2489,3 +2489,229 @@
 
 })();
 </script>
+
+<!-- =====================================================
+     Feature Patch v14 — Pre-market / After-hours prices
+     ===================================================== -->
+<style>
+  #pp-premarket-bar {
+    direction: rtl;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    padding: 6px 14px;
+    background: hsl(222,20%,10%);
+    border-bottom: 1px solid hsl(222,14%,18%);
+    font-size: 11px;
+    position: relative;
+    z-index: 100;
+  }
+  #pp-premarket-bar .pp-pm-label {
+    color: #94a3b8;
+    font-weight: 600;
+    white-space: nowrap;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  #pp-premarket-bar .pp-pm-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    background: hsl(222,14%,15%);
+    border: 1px solid hsl(222,14%,24%);
+    border-radius: 4px;
+    padding: 2px 7px;
+    white-space: nowrap;
+    font-size: 11px;
+  }
+  #pp-premarket-bar .pp-pm-chip .pp-pm-sym  { font-weight: 700; color: #e2e8f0; }
+  #pp-premarket-bar .pp-pm-chip .pp-pm-px   { color: #cbd5e1; margin-right: 3px; }
+  #pp-premarket-bar .pp-pm-chip .pp-pm-pos  { color: #34d399; }
+  #pp-premarket-bar .pp-pm-chip .pp-pm-neg  { color: #f87171; }
+  #pp-premarket-bar .pp-pm-chip .pp-pm-icon { font-size: 10px; opacity: .8; }
+
+  /* inline badge injected into holdings table cells */
+  .pp-pm-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    font-size: 10px;
+    margin-right: 4px;
+    padding: 1px 5px;
+    border-radius: 3px;
+    background: hsl(222,14%,15%);
+    border: 1px solid hsl(222,14%,24%);
+    vertical-align: middle;
+    white-space: nowrap;
+  }
+  .pp-pm-badge.pos { border-color: #34d39844; color: #34d399; }
+  .pp-pm-badge.neg { border-color: #f8717144; color: #f87171; }
+
+  @media (max-width: 640px) {
+    #pp-premarket-bar { padding: 5px 10px; gap: 5px; }
+    #pp-premarket-bar .pp-pm-chip { font-size: 10px; padding: 2px 5px; }
+  }
+</style>
+
+<script>
+/* =====================================================
+   Feature Patch v14 — Pre-market / After-hours prices
+   ===================================================== */
+(function () {
+  'use strict';
+
+  var _pmData = null;
+
+  /* ── session labels ──────────────────────────────── */
+  var SESSION_LABEL = {
+    PRE:     '🌙 פרה-מרקט',
+    POST:    '🌙 אחרי שעות',
+    CLOSED:  '🌙 שוק סגור',
+    REGULAR: '☀️ מסחר פעיל'
+  };
+
+  /* ── load portfolio symbols ──────────────────────── */
+  function getSyms() {
+    try {
+      var s = JSON.parse(localStorage.getItem('primo_portfolio_v6') || '{}');
+      var seen = {}, out = [];
+      (s.transactions || []).forEach(function(t) {
+        var sym = (t.ticker || t.symbol || '').toUpperCase();
+        if (sym && !seen[sym]) { seen[sym] = 1; out.push(sym); }
+      });
+      return out;
+    } catch(e) { return []; }
+  }
+
+  /* ── render the top bar ──────────────────────────── */
+  function renderBar(data) {
+    var existing = document.getElementById('pp-premarket-bar');
+    if (existing) existing.remove();
+
+    var syms = Object.keys(data);
+    if (!syms.length) return;
+
+    // Pick session from first available symbol
+    var session = 'REGULAR';
+    syms.forEach(function(s) { if (data[s].session) session = data[s].session; });
+
+    var bar = document.createElement('div');
+    bar.id = 'pp-premarket-bar';
+
+    var lbl = document.createElement('span');
+    lbl.className = 'pp-pm-label';
+    lbl.textContent = SESSION_LABEL[session] || SESSION_LABEL.CLOSED;
+    bar.appendChild(lbl);
+
+    // Only show price chips when there's actual extended-hours data
+    syms.forEach(function(sym) {
+      var d = data[sym];
+      if (!d.price || d.session === 'REGULAR') return;
+      var pct = d.changePct;
+
+      var chip = document.createElement('span');
+      chip.className = 'pp-pm-chip';
+
+      var icon = document.createElement('span');
+      icon.className = 'pp-pm-icon';
+      icon.textContent = '🌙';
+
+      var symEl = document.createElement('span');
+      symEl.className = 'pp-pm-sym';
+      symEl.textContent = sym;
+
+      var px = document.createElement('span');
+      px.className = 'pp-pm-px';
+      px.textContent = '$' + d.price.toFixed(2);
+
+      chip.appendChild(icon);
+      chip.appendChild(symEl);
+      chip.appendChild(px);
+
+      if (pct != null) {
+        var pctEl = document.createElement('span');
+        pctEl.className = pct >= 0 ? 'pp-pm-pos' : 'pp-pm-neg';
+        pctEl.textContent = (pct >= 0 ? '+' : '') + pct.toFixed(2) + '%';
+        chip.appendChild(pctEl);
+      }
+      bar.appendChild(chip);
+    });
+
+    /* inject bar after the sticky header */
+    var header = document.querySelector('header') ||
+                 document.querySelector('[class*="sticky"][class*="top"]');
+    if (header && header.parentNode) {
+      header.parentNode.insertBefore(bar, header.nextSibling);
+    } else {
+      var root = document.getElementById('root');
+      if (root && root.firstChild) root.firstChild.insertBefore(bar, root.firstChild.firstChild);
+    }
+  }
+
+  /* ── inject 🌙 badge into holdings table rows ────── */
+  function injectTableBadges(data) {
+    var syms = Object.keys(data).filter(function(s) {
+      return data[s].price && data[s].session !== 'REGULAR';
+    });
+    if (!syms.length) return;
+
+    document.querySelectorAll('table tbody tr').forEach(function(row) {
+      // find which symbol this row belongs to
+      var cells = row.querySelectorAll('td');
+      if (!cells.length) return;
+      var sym = null;
+      cells.forEach(function(td) {
+        var txt = td.textContent.trim().toUpperCase();
+        if (syms.indexOf(txt) !== -1) sym = txt;
+      });
+      if (!sym || row.querySelector('.pp-pm-badge')) return;
+
+      var d = data[sym];
+      var pct = d.changePct;
+
+      // inject badge into the price cell (typically the 4th cell, but search for $)
+      var priceCell = null;
+      cells.forEach(function(td) {
+        if (/\$[\d,]+/.test(td.textContent) && !priceCell) priceCell = td;
+      });
+      if (!priceCell) priceCell = cells[cells.length > 3 ? 3 : cells.length - 1];
+
+      var badge = document.createElement('span');
+      badge.className = 'pp-pm-badge ' + (pct == null ? '' : pct >= 0 ? 'pos' : 'neg');
+      badge.title = 'פרה/אחרי שעות מסחר';
+      badge.innerHTML = '🌙 $' + d.price.toFixed(2) +
+        (pct != null ? ' ' + (pct >= 0 ? '+' : '') + pct.toFixed(1) + '%' : '');
+      priceCell.appendChild(badge);
+    });
+  }
+
+  /* ── main fetch ──────────────────────────────────── */
+  function loadPremarket() {
+    var syms = getSyms();
+    if (!syms.length) return;
+    fetch('/api/premarket?symbols=' + encodeURIComponent(syms.join(',')))
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        _pmData = data;
+        renderBar(data);
+        injectTableBadges(data);
+      })
+      .catch(function() {});
+  }
+
+  /* ── re-inject badges after React re-renders ─────── */
+  var _deb14 = null;
+  var obs14 = new MutationObserver(function() {
+    clearTimeout(_deb14);
+    _deb14 = setTimeout(function() {
+      if (_pmData) injectTableBadges(_pmData);
+    }, 500);
+  });
+  obs14.observe(document.body, { childList: true, subtree: true });
+
+  setTimeout(loadPremarket, 3000);
+
+})();
+</script>

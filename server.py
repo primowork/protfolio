@@ -199,6 +199,55 @@ async def get_gross_margin(symbols: str = ""):
     return JSONResponse({sym: data for sym, data in results if data})
 
 
+@app.get("/api/premarket")
+async def get_premarket(symbols: str = ""):
+    if not symbols:
+        return JSONResponse({})
+    import asyncio, concurrent.futures
+    sym_list = [s.strip().upper() for s in symbols.split(",") if s.strip()]
+
+    def fetch_one(sym):
+        try:
+            info = yf.Ticker(sym).info
+            state = info.get("marketState", "REGULAR")
+            reg   = info.get("regularMarketPrice")
+
+            pre_p   = info.get("preMarketPrice")
+            pre_pct = info.get("preMarketChangePercent")
+            post_p  = info.get("postMarketPrice")
+            post_pct= info.get("postMarketChangePercent")
+
+            base = {"state": state, "regularPrice": round(reg, 2) if reg else None}
+
+            if state == "PRE" and pre_p:
+                base.update({"session": "PRE",  "price": round(pre_p,2),
+                              "changePct": round(pre_pct,2) if pre_pct else None})
+            elif state in ("POST","POSTPOST") and post_p:
+                base.update({"session": "POST", "price": round(post_p,2),
+                              "changePct": round(post_pct,2) if post_pct else None})
+            elif state == "CLOSED":
+                p = post_p or pre_p
+                pct = post_pct or pre_pct
+                if p:
+                    base.update({"session": "CLOSED", "price": round(p,2),
+                                 "changePct": round(pct,2) if pct else None})
+                else:
+                    base["session"] = "CLOSED"
+            else:
+                base["session"] = "REGULAR"
+            return sym, base
+        except Exception as e:
+            logging.warning(f"Premarket {sym}: {e}")
+        return sym, None
+
+    loop = asyncio.get_event_loop()
+    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as pool:
+        tasks = [loop.run_in_executor(pool, fetch_one, s) for s in sym_list]
+        results = await asyncio.gather(*tasks)
+
+    return JSONResponse({sym: data for sym, data in results if data})
+
+
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8000))
     uvicorn.run("server:app", host="0.0.0.0", port=port)
