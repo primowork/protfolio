@@ -1482,7 +1482,7 @@
 (function () {
   'use strict';
 
-  var _ma200Box = null, _peBox = null, _revenueBox = null;
+  var _insightWrap = null;
   var _fetched = false;
 
   function isInsightsTab() {
@@ -1659,103 +1659,293 @@
     section('📉 הכנסות יורדות', falling, '#f87171');
   }
 
-  /* ── find anchor in תובנות tab ───────────────────── */
-  function findInsightsAnchor() {
-    var anchor = null;
-    document.querySelectorAll('div[class]').forEach(function(d) {
-      if (anchor) return;
-      if (d.textContent.includes('תובנות') && d.className.includes('p-') && d.children.length > 2) {
-        anchor = d.parentNode;
-      }
+  /* ── tabbed container for all 3 insight panels ──── */
+  function makeInsightTabs() {
+    var TAB_DEFS = [
+      { id: 'ma200',   label: '📉 MA200',    color: '#67e8f9' },
+      { id: 'pe',      label: '💰 PE',       color: '#a78bfa' },
+      { id: 'revenue', label: '📊 Revenue',  color: '#34d399' },
+    ];
+
+    var wrap = document.createElement('div');
+    wrap.id = 'pp-insight-tabwrap';
+    wrap.style.cssText = 'background:hsl(222,14%,10%);border:1px solid hsl(222,14%,18%);border-radius:6px;margin-bottom:12px;direction:rtl;overflow:hidden;';
+
+    var bar = document.createElement('div');
+    bar.style.cssText = 'display:flex;border-bottom:1px solid hsl(222,14%,18%);';
+    wrap.appendChild(bar);
+
+    var btns = {}, panels = {};
+    TAB_DEFS.forEach(function(t) {
+      var btn = document.createElement('button');
+      btn.textContent = t.label;
+      btn.style.cssText = 'flex:1;padding:10px 4px;font-size:12px;font-weight:600;background:none;border:none;border-bottom:2px solid transparent;cursor:pointer;color:#64748b;transition:color .15s,border-color .15s;white-space:nowrap;';
+      bar.appendChild(btn);
+      btns[t.id] = { el: btn, color: t.color };
+
+      var panel = document.createElement('div');
+      panel.style.cssText = 'display:none;padding:14px 16px;';
+      for (var j = 0; j < 3; j++) panel.appendChild(makeSkeleton());
+      wrap.appendChild(panel);
+      panels[t.id] = panel;
+
+      btn.addEventListener('click', (function(id) { return function() { activate(id); }; })(t.id));
     });
-    // fallback: first main content div inside the insights tab
-    if (!anchor) {
-      var main = document.querySelector('main, [class*="container"], [class*="max-w"]');
-      if (main) anchor = main;
+
+    function activate(id) {
+      TAB_DEFS.forEach(function(t) {
+        var on = t.id === id;
+        btns[t.id].el.style.color = on ? t.color : '#64748b';
+        btns[t.id].el.style.borderBottomColor = on ? t.color : 'transparent';
+        panels[t.id].style.display = on ? 'block' : 'none';
+      });
+      try { localStorage.setItem('pp_insight_tab', id); } catch(e) {}
     }
-    return anchor;
+
+    var saved = '';
+    try { saved = localStorage.getItem('pp_insight_tab') || 'ma200'; } catch(e) { saved = 'ma200'; }
+    activate(saved);
+
+    return { wrap: wrap, panels: panels };
   }
 
   function injectBoxes() {
     if (!isInsightsTab()) {
-      if (_ma200Box    && _ma200Box.parentNode)    _ma200Box.parentNode.removeChild(_ma200Box);
-      if (_peBox       && _peBox.parentNode)       _peBox.parentNode.removeChild(_peBox);
-      if (_revenueBox  && _revenueBox.parentNode)  _revenueBox.parentNode.removeChild(_revenueBox);
-      _ma200Box = _peBox = _revenueBox = null;
+      if (_insightWrap && _insightWrap.parentNode) _insightWrap.parentNode.removeChild(_insightWrap);
+      _insightWrap = null;
       _fetched = false;
       return;
     }
-    /* React may re-render main and remove our cards — detect and reset */
-    if (_ma200Box && !document.body.contains(_ma200Box)) {
-      _ma200Box = _peBox = _revenueBox = null;
+    if (_insightWrap && !document.body.contains(_insightWrap)) {
+      _insightWrap = null;
       _fetched = false;
     }
-    if (_ma200Box && document.body.contains(_ma200Box)) return;
+    if (_insightWrap && document.body.contains(_insightWrap)) return;
 
     var syms = getSymbols();
     if (!syms.length) return;
 
-    /* find a good place to insert — after last card in insights */
-    var target = null;
-    document.querySelectorAll('div').forEach(function(d) {
-      if (d.id === 'root' || d.children.length === 0) return;
-      var txt = d.textContent;
-      if (txt.includes('מגמות') || txt.includes('הישגים') || txt.includes('אחוז') || txt.includes('ביצועים')) {
-        if (d.parentNode && d.offsetParent !== null) target = d.parentNode;
-      }
-    });
-    if (!target) target = document.getElementById('root');
-    if (!target) return;
-
-    var ma200Card    = makeCard('📉 מניות מתחת לממוצע 200 יומי', '#67e8f9');
-    var peCard       = makeCard('💰 ניתוח שווי — PE', '#a78bfa');
-    var revenueCard  = makeCard('📊 מגמת הכנסות (Revenue)', '#34d399');
-
-    /* main element is the tab content container */
     var main = document.querySelector('main');
     if (!main) return;
-    main.appendChild(ma200Card.wrap);
-    main.appendChild(peCard.wrap);
-    main.appendChild(revenueCard.wrap);
 
-    _ma200Box   = ma200Card.wrap;
-    _peBox      = peCard.wrap;
-    _revenueBox = revenueCard.wrap;
+    var tc = makeInsightTabs();
+    main.appendChild(tc.wrap);
+    _insightWrap = tc.wrap;
 
     if (_fetched) return;
     _fetched = true;
 
     var q = syms.join(',');
 
-    /* fetch MA200 */
     fetch('/api/ma200?symbols=' + encodeURIComponent(q))
       .then(function(r) { return r.json(); })
-      .then(function(data) { renderMA200(ma200Card.body, data); })
+      .then(function(data) { renderMA200(tc.panels.ma200, data); })
       .catch(function() {
-        ma200Card.body.innerHTML = '<p style="color:#f87171;font-size:12px;">שגיאה בטעינת נתוני MA200</p>';
+        tc.panels.ma200.innerHTML = '<p style="color:#f87171;font-size:12px;">שגיאה בטעינת נתוני MA200</p>';
       });
 
-    /* fetch PE */
     fetch('/api/pe?symbols=' + encodeURIComponent(q))
       .then(function(r) { return r.json(); })
-      .then(function(data) { renderPE(peCard.body, data); })
+      .then(function(data) { renderPE(tc.panels.pe, data); })
       .catch(function() {
-        peCard.body.innerHTML = '<p style="color:#f87171;font-size:12px;">שגיאה בטעינת נתוני PE</p>';
+        tc.panels.pe.innerHTML = '<p style="color:#f87171;font-size:12px;">שגיאה בטעינת נתוני PE</p>';
       });
 
-    /* fetch Revenue */
     fetch('/api/revenue?symbols=' + encodeURIComponent(q))
       .then(function(r) { return r.json(); })
-      .then(function(data) { renderRevenue(revenueCard.body, data); })
+      .then(function(data) { renderRevenue(tc.panels.revenue, data); })
       .catch(function() {
-        revenueCard.body.innerHTML = '<p style="color:#f87171;font-size:12px;">שגיאה בטעינת נתוני Revenue</p>';
+        tc.panels.revenue.innerHTML = '<p style="color:#f87171;font-size:12px;">שגיאה בטעינת נתוני Revenue</p>';
       });
   }
 
   var obs10 = new MutationObserver(function() { injectBoxes(); });
   obs10.observe(document.body, { childList: true, subtree: true });
-
   setTimeout(injectBoxes, 2500);
+
+})();
+</script>
+
+<style>
+  .pp-drag-handle {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    width: 22px;
+    height: 22px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 17px;
+    color: transparent;
+    cursor: grab;
+    user-select: none;
+    z-index: 50;
+    transition: color .18s;
+    border-radius: 4px;
+    line-height: 1;
+  }
+  .pp-drag-handle:active { cursor: grabbing; }
+  .pp-drag-over-top    { border-top:    2px solid #7c3aed !important; }
+  .pp-drag-over-bottom { border-bottom: 2px solid #7c3aed !important; }
+</style>
+
+<script>
+/* =====================================================
+   Feature Patch v11 — Global drag-and-drop card reorder
+   ===================================================== */
+(function () {
+  'use strict';
+
+  var ORDER_KEY  = 'pp_card_order';
+  var _dragging  = null;
+  var _busy      = false;
+  var _debounce  = null;
+
+  /* ── current active tab name ───────────────────── */
+  function tabKey() {
+    var name = '';
+    document.querySelectorAll('button').forEach(function(b) {
+      if (b.className && b.className.indexOf('border-violet-500') !== -1) name = b.textContent.trim();
+    });
+    return name || 'default';
+  }
+
+  /* ── stable text fingerprint for a card ─────────── */
+  function fp(el) {
+    return (el.dataset.ppId || el.textContent.replace(/\s+/g,' ').trim().slice(0, 48));
+  }
+
+  /* ── persist / restore order ─────────────────────── */
+  function saveOrder(main) {
+    var order = {};
+    try { order = JSON.parse(localStorage.getItem(ORDER_KEY) || '{}'); } catch(e) {}
+    order[tabKey()] = Array.from(main.children).map(fp);
+    try { localStorage.setItem(ORDER_KEY, JSON.stringify(order)); } catch(e) {}
+  }
+
+  function restoreOrder(main) {
+    if (_busy) return;
+    var order = {};
+    try { order = JSON.parse(localStorage.getItem(ORDER_KEY) || '{}'); } catch(e) {}
+    var saved = order[tabKey()];
+    if (!saved || saved.length < 2) return;
+
+    var children = Array.from(main.children);
+    if (children.length < 2) return;
+
+    var byFp = {};
+    children.forEach(function(c) { byFp[fp(c)] = c; });
+
+    var sorted = saved.map(function(f) { return byFp[f]; }).filter(Boolean);
+    children.forEach(function(c) { if (sorted.indexOf(c) === -1) sorted.push(c); });
+
+    var changed = sorted.some(function(c, i) { return main.children[i] !== c; });
+    if (!changed) return;
+
+    _busy = true;
+    obs11.disconnect();
+    sorted.forEach(function(c) { main.appendChild(c); });
+    setTimeout(function() {
+      obs11.observe(document.body, { childList: true, subtree: true });
+      _busy = false;
+    }, 80);
+  }
+
+  /* ── add visual handle + drag events ──────────────── */
+  function ensureHandle(el, main) {
+    /* check if handle already in DOM */
+    if (el.querySelector('.pp-drag-handle')) return;
+
+    /* make card positioning context */
+    if (getComputedStyle(el).position === 'static') el.style.position = 'relative';
+
+    var h = document.createElement('div');
+    h.className = 'pp-drag-handle';
+    h.textContent = '⠿';
+    h.title = 'גרור לשינוי מיקום';
+    el.appendChild(h);
+
+    /* show/hide on hover */
+    el.addEventListener('mouseenter', function() { h.style.color = 'rgba(100,116,139,.65)'; });
+    el.addEventListener('mouseleave', function() {
+      if (_dragging !== el) h.style.color = 'transparent';
+    });
+
+    /* only start drag when handle is grabbed */
+    h.addEventListener('mousedown', function(e) {
+      el.setAttribute('draggable', 'true');
+      e.stopPropagation();
+    });
+    el.addEventListener('mouseup', function() {
+      el.setAttribute('draggable', 'false');
+    });
+
+    /* drag lifecycle */
+    el.addEventListener('dragstart', function(e) {
+      _dragging = el;
+      e.dataTransfer.effectAllowed = 'move';
+      setTimeout(function() {
+        el.style.opacity = '0.45';
+        el.style.boxShadow = '0 0 0 2px #7c3aed';
+      }, 0);
+    });
+
+    el.addEventListener('dragend', function() {
+      el.style.opacity = '';
+      el.style.boxShadow = '';
+      el.setAttribute('draggable', 'false');
+      h.style.color = 'transparent';
+      _dragging = null;
+      document.querySelectorAll('.pp-drag-over-top,.pp-drag-over-bottom').forEach(function(x) {
+        x.classList.remove('pp-drag-over-top', 'pp-drag-over-bottom');
+      });
+      saveOrder(main);
+    });
+
+    el.addEventListener('dragover', function(e) {
+      if (!_dragging || _dragging === el) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+
+      document.querySelectorAll('.pp-drag-over-top,.pp-drag-over-bottom').forEach(function(x) {
+        x.classList.remove('pp-drag-over-top', 'pp-drag-over-bottom');
+      });
+
+      var rect = el.getBoundingClientRect();
+      var before = e.clientY < rect.top + rect.height / 2;
+      el.classList.add(before ? 'pp-drag-over-top' : 'pp-drag-over-bottom');
+
+      if (before) {
+        if (_dragging.nextSibling !== el) main.insertBefore(_dragging, el);
+      } else {
+        if (_dragging.previousSibling !== el) main.insertBefore(_dragging, el.nextSibling || null);
+      }
+    });
+
+    el.addEventListener('dragleave', function() {
+      el.classList.remove('pp-drag-over-top', 'pp-drag-over-bottom');
+    });
+  }
+
+  /* ── process all main > children ─────────────────── */
+  function processMain() {
+    var main = document.querySelector('main');
+    if (!main) return;
+    Array.from(main.children).forEach(function(c) {
+      if (c.nodeType === 1) ensureHandle(c, main);
+    });
+    restoreOrder(main);
+  }
+
+  var obs11 = new MutationObserver(function() {
+    if (_busy) return;
+    clearTimeout(_debounce);
+    _debounce = setTimeout(processMain, 350);
+  });
+
+  obs11.observe(document.body, { childList: true, subtree: true });
+  setTimeout(processMain, 3500);
 
 })();
 </script>
