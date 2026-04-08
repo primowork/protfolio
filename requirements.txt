@@ -1,7 +1,7 @@
 fastapi
-
 uvicorn
-
 httpx
-
 yfinance
+websockets
+orjson
+python-dotenv

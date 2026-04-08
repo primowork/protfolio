@@ -1,10 +1,70 @@
-from fastapi import FastAPI
+from contextlib import asynccontextmanager
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, JSONResponse
-import uvicorn, logging, os
+import uvicorn, logging, asyncio, os, json
 import yfinance as yf
 
+# load .env for local dev (no-op if file absent or python-dotenv not installed)
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
+from polygon_stream import stream as polygon_stream
+
 logging.basicConfig(level=logging.INFO)
-app = FastAPI()
+
+
+# ── WebSocket connection manager ─────────────────────────────────────────
+class _WSManager:
+    """Tracks all connected frontend clients and broadcasts price updates."""
+    def __init__(self):
+        self._clients: set = set()
+
+    async def connect(self, ws: WebSocket) -> None:
+        await ws.accept()
+        self._clients.add(ws)
+        logging.info(f"WS client connected (total: {len(self._clients)})")
+
+    def disconnect(self, ws: WebSocket) -> None:
+        self._clients.discard(ws)
+        logging.info(f"WS client disconnected (total: {len(self._clients)})")
+
+    async def broadcast(self, updates: dict) -> None:
+        """Push price update to all connected frontend clients."""
+        if not self._clients:
+            return
+        payload = json.dumps({
+            "type":   "prices",
+            "prices": {
+                sym: {"price": d.get("price"), "ts": d.get("ts")}
+                for sym, d in updates.items()
+            },
+            "source": "polygon-live",
+            "active": True,
+        })
+        dead = set()
+        for ws in list(self._clients):
+            try:
+                await ws.send_text(payload)
+            except Exception:
+                dead.add(ws)
+        self._clients -= dead
+
+ws_manager = _WSManager()
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Wire broadcast callback BEFORE starting the stream
+    polygon_stream._on_batch = ws_manager.broadcast
+    task = asyncio.create_task(polygon_stream.run())
+    yield
+    polygon_stream.stop()
+    task.cancel()
+
+app = FastAPI(lifespan=lifespan)
 
 _dir = os.path.dirname(os.path.abspath(__file__))
 with open(os.path.join(_dir, "app.html"), "r", encoding="utf-8") as f:
@@ -233,6 +293,79 @@ async def get_fundamentals(symbols: str = ""):
         results = await asyncio.gather(*tasks)
 
     return JSONResponse({sym: data for sym, data in results if data})
+
+
+@app.websocket("/ws/prices")
+async def ws_prices(ws: WebSocket, symbols: str = ""):
+    """
+    Frontend connects here once. Receives pushed price updates
+    from the Polygon batch callback instead of polling.
+    Client also sends its symbol list so we subscribe them to the stream.
+    """
+    await ws_manager.connect(ws)
+    try:
+        # register symbols immediately
+        if symbols:
+            sym_list = [s.strip().upper() for s in symbols.split(",") if s.strip()]
+            if sym_list:
+                await polygon_stream.subscribe(sym_list)
+
+        # keep connection alive; client may also send symbol updates
+        while True:
+            text = await ws.receive_text()
+            try:
+                msg = json.loads(text)
+                if msg.get("action") == "subscribe" and msg.get("symbols"):
+                    await polygon_stream.subscribe(msg["symbols"])
+            except Exception:
+                pass
+    except WebSocketDisconnect:
+        ws_manager.disconnect(ws)
+    except Exception:
+        ws_manager.disconnect(ws)
+
+
+@app.get("/api/live-prices")
+async def get_live_prices(symbols: str = ""):
+    """
+    Returns Polygon live trade prices (if stream active) or falls back to yfinance.
+    The frontend sends its holding symbols here; this call also registers them
+    for the stream subscription so the next tick arrives fast.
+    """
+    sym_list = [s.strip().upper() for s in symbols.split(",") if s.strip()] if symbols else []
+
+    # register symbols with the stream (no-op if already subscribed)
+    if sym_list:
+        await polygon_stream.subscribe(sym_list)
+
+    live = polygon_stream.get_prices()
+    active = polygon_stream.is_active()
+
+    if active and live:
+        # return only requested symbols (or all if no filter)
+        result = {s: live[s] for s in sym_list if s in live} if sym_list else live
+        return JSONResponse({"prices": result, "source": "polygon-live", "active": True})
+
+    # fallback: yfinance snapshot (same logic as /api/prices)
+    prices, prev = {}, {}
+    if sym_list:
+        try:
+            tickers = yf.Tickers(" ".join(sym_list))
+            for sym in sym_list:
+                try:
+                    info = tickers.tickers[sym].fast_info
+                    if info.last_price: prices[sym] = {"price": info.last_price, "src": "yfinance"}
+                    if info.previous_close: prev[sym] = info.previous_close
+                except Exception as e:
+                    logging.warning(f"live-prices fallback {sym}: {e}")
+        except Exception as e:
+            logging.error(e)
+    return JSONResponse({"prices": prices, "prevClose": prev, "source": "yfinance", "active": False})
+
+
+@app.get("/api/stream-status")
+async def get_stream_status():
+    return JSONResponse(polygon_stream.status())
 
 
 @app.get("/api/premarket")
