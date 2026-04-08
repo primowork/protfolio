@@ -90,6 +90,8 @@
     if (state.transactions.length === 0) state.transactions = TRANSACTIONS;
     if (!Array.isArray(state.snapshots))    state.snapshots    = [];
     if (!state.prices)                      state.prices       = {};
+    if (!state.prevClose)                   state.prevClose    = {};
+    if (!state.pricesLastUpdated)           state.pricesLastUpdated = new Date().toISOString();
     if (!state.goalILS)                     state.goalILS      = 100000;
     localStorage.setItem(KEY, JSON.stringify(state));
   } catch(e) { console.error('Deposit seed error:', e); }
