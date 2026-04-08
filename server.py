@@ -199,6 +199,42 @@ async def get_gross_margin(symbols: str = ""):
     return JSONResponse({sym: data for sym, data in results if data})
 
 
+@app.get("/api/fundamentals")
+async def get_fundamentals(symbols: str = ""):
+    if not symbols:
+        return JSONResponse({})
+    import asyncio, concurrent.futures
+    sym_list = [s.strip().upper() for s in symbols.split(",") if s.strip()]
+
+    def fetch_one(sym):
+        try:
+            info = yf.Ticker(sym).info
+            result = {}
+            fcf    = info.get("freeCashflow")
+            mktcap = info.get("marketCap")
+            debt   = info.get("totalDebt")
+            ebitda = info.get("ebitda")
+            roe    = info.get("returnOnEquity")
+            if fcf and mktcap and mktcap > 0:
+                result["fcfYield"] = round(fcf / mktcap * 100, 1)
+            if debt is not None and ebitda and ebitda > 0:
+                result["debtEbitda"] = round(debt / ebitda, 1)
+            if roe is not None:
+                result["roe"] = round(roe * 100, 1)
+            if result:
+                return sym, result
+        except Exception as e:
+            logging.warning(f"Fundamentals {sym}: {e}")
+        return sym, None
+
+    loop = asyncio.get_event_loop()
+    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as pool:
+        tasks = [loop.run_in_executor(pool, fetch_one, s) for s in sym_list]
+        results = await asyncio.gather(*tasks)
+
+    return JSONResponse({sym: data for sym, data in results if data})
+
+
 @app.get("/api/premarket")
 async def get_premarket(symbols: str = ""):
     if not symbols:

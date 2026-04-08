@@ -6,7 +6,7 @@
   var s = document.createElement('style');
   s.id = 'pp-font-scale';
   s.textContent = [
-    'html { font-size: 135% !important; -webkit-text-size-adjust: 135% !important; }',
+    'html { font-size: 135% !important; }',
     'a[href*="tradingview"] { text-decoration: none !important; transition: color .15s; }',
     'a[href*="tradingview"]:hover { color: #4ade80 !important; }',
     '@keyframes pp-detail-in {',
@@ -1855,116 +1855,146 @@
     load('annual', initialData);
   }
 
-  /* ── cross-reference all 4 metrics → BUY / SELL ─── */
-  function renderAnalysis(panel, ma200Data, peData, revData, gmData) {
+  /* ── cross-reference 5 algorithm filters ────────── */
+  function renderAnalysis(panel, ma200Data, peData, revData, gmData, fundData) {
     panel.innerHTML = '';
     var syms = getSymbols();
     if (!syms.length) { panel.innerHTML = '<p style="color:#94a3b8;font-size:16.2px;">אין מניות</p>'; return; }
-
-    var scored = [];
-    syms.forEach(function(s) {
-      var sc = 0, pos = [], neg = [];
-
-      /* MA200 — trend */
-      var m = ma200Data[s];
-      if (m) {
-        if (!m.below) { sc += 2; pos.push('מעל MA200 +' + m.pct + '%'); }
-        else          { sc -= 2; neg.push('מתחת MA200 ' + m.pct + '%'); }
-      }
-
-      /* PE — valuation (forward only if passes sanity check, always fall back to trailing) */
-      var p = peData[s];
-      var ep = p ? (saneFwd(p) || p.trailingPE) : null;
-      var epLabel = p && saneFwd(p) ? 'fwd PE' : 'TTM PE';
-      if (ep) {
-        if      (ep < 15) { sc += 3; pos.push(epLabel + ' ' + fmtPE(ep) + ' (זול)'); }
-        else if (ep < 25) { sc += 2; pos.push(epLabel + ' ' + fmtPE(ep) + ' (הוגן)'); }
-        else if (ep < 40) { sc += 1; }
-        else if (ep > 60) { sc -= 2; neg.push(epLabel + ' ' + fmtPE(ep) + ' (יקר מאוד)'); }
-      }
-
-      /* Revenue — growth */
-      var r = revData[s];
-      if (r) {
-        if      (r.pct > 20) { sc += 2; pos.push('Revenue +' + r.pct + '%'); }
-        else if (r.pct > 5)  { sc += 1; pos.push('Revenue +' + r.pct + '%'); }
-        else if (r.pct > 0)  { pos.push('Revenue +' + r.pct + '%'); }
-        else                 { sc -= 2; neg.push('Revenue ' + r.pct + '%'); }
-      }
-
-      /* Gross Margin — moat */
-      var g = gmData[s];
-      if (g) {
-        if      (g.pct > 60) { sc += 2; pos.push('GM ' + g.pct + '%'); }
-        else if (g.pct > 40) { sc += 1; pos.push('GM ' + g.pct + '%'); }
-        else if (g.pct < 20) { sc -= 1; neg.push('GM ' + g.pct + '% (נמוך)'); }
-      }
-
-      /* PEG — value vs growth (Wall St rule: PEG < 1 = cheap for growth) */
-      if (ep && r && r.pct > 5) {
-        var peg = +(ep / r.pct).toFixed(2);
-        if      (peg < 0.5) { sc += 2; pos.push('PEG ' + peg + ' (מעולה)'); }
-        else if (peg < 1)   { sc += 1; pos.push('PEG ' + peg); }
-        else if (peg > 3)   { sc -= 1; neg.push('PEG ' + peg + ' (גבוה)'); }
-      }
-
-      if (pos.length + neg.length >= 2) scored.push({ sym: s, sc: sc, pos: pos, neg: neg });
-    });
-
-    scored.sort(function(a, b) { return b.sc - a.sc; });
-    var buys  = scored.slice(0, 3);
-    var sells = scored.slice().sort(function(a,b){return a.sc-b.sc;})
-                      .filter(function(x){ return buys.indexOf(x)===-1; })
-                      .slice(0, 3);
+    fundData = fundData || {};
 
     /* timestamp */
     var ts = document.createElement('p');
-    ts.style.cssText = 'font-size:13.5px;color:#475569;margin-bottom:10px;direction:ltr;text-align:left;';
+    ts.style.cssText = 'font-size:13.5px;color:#475569;margin-bottom:12px;direction:ltr;text-align:left;';
     ts.textContent = 'עדכון: ' + new Date().toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'}) +
-                     ' | MA200 · PE · Revenue · Gross Margin · PEG';
+                     ' | הצלבה עם 5 פילטרי האלגוריתם';
     panel.appendChild(ts);
 
-    function renderGroup(title, list, color) {
-      if (!list.length) return;
+    /* per-stock pass counter */
+    var scores = {};
+    syms.forEach(function(s) { scores[s] = { passes: 0, total: 0 }; });
+
+    /* ── build one filter section ──────────────────── */
+    function makeFilter(num, heTitle, enThreshold, purpose, icon, stocks) {
+      var wrap = document.createElement('div');
+      wrap.style.cssText = 'margin-bottom:10px;border:1px solid hsl(222,14%,20%);border-radius:6px;overflow:hidden;';
+
       var hdr = document.createElement('div');
-      hdr.style.cssText = 'font-weight:700;font-size:16.2px;color:'+color+';margin:8px 0 6px;padding-bottom:4px;border-bottom:1px solid '+color+'44;';
-      hdr.textContent = title;
-      panel.appendChild(hdr);
-      list.forEach(function(item) {
-        var card = document.createElement('div');
-        card.style.cssText = 'background:hsl(222,14%,12%);border-radius:5px;padding:8px 10px;margin-bottom:6px;border-right:3px solid '+color+';';
-        var sign = item.sc > 0 ? '+' : '';
-        card.innerHTML = '<div style="display:flex;justify-content:space-between;margin-bottom:4px;">' +
-          '<a href="https://www.tradingview.com/chart/?symbol=' + item.sym + '" target="_blank" rel="noopener noreferrer" style="font-weight:700;font-size:18.9px;color:#e2e8f0;text-decoration:none;transition:color .15s;">' + item.sym + '</a>' +
-          '<span style="font-size:14.8px;font-weight:700;color:'+color+';">ציון ' + sign + item.sc + '</span>' +
-        '</div>';
-        function makeChips(factors, chipColor, bg) {
-          var wrap = document.createElement('div');
-          wrap.style.cssText = 'display:flex;flex-wrap:wrap;gap:4px;margin-top:5px;';
-          factors.forEach(function(f) {
-            var chip = document.createElement('span');
-            chip.style.cssText = 'font-size:13.5px;font-weight:600;color:' + chipColor +
-              ';background:' + bg + ';border:1px solid ' + chipColor + '44;' +
-              'border-radius:4px;padding:2px 6px;white-space:nowrap;';
-            chip.textContent = f;
-            wrap.appendChild(chip);
-          });
-          return wrap;
-        }
-        if (item.pos.length) card.appendChild(makeChips(item.pos, '#34d399', '#052e16'));
-        if (item.neg.length) card.appendChild(makeChips(item.neg, '#f87171', '#2d0a0a'));
-        panel.appendChild(card);
-      });
+      hdr.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:7px 12px;background:hsl(222,14%,13%);direction:rtl;';
+      hdr.innerHTML =
+        '<div style="display:flex;align-items:center;gap:6px;">' +
+          '<span style="font-size:12px;font-weight:600;color:#475569;white-space:nowrap;">פילטר ' + num + '</span>' +
+          '<span style="font-size:15px;font-weight:700;color:#e2e8f0;">' + icon + ' ' + heTitle + '</span>' +
+        '</div>' +
+        '<span style="font-size:12px;color:#475569;direction:ltr;font-family:monospace;">' + enThreshold + '</span>';
+      wrap.appendChild(hdr);
+
+      var desc = document.createElement('div');
+      desc.style.cssText = 'padding:4px 12px;background:hsl(222,14%,10%);font-size:13px;color:#64748b;direction:rtl;border-top:1px solid hsl(222,14%,17%);';
+      desc.textContent = '⟶ ' + purpose;
+      wrap.appendChild(desc);
+
+      var rows = document.createElement('div');
+      rows.style.cssText = 'padding:8px 12px;display:flex;flex-wrap:wrap;gap:5px;direction:rtl;background:hsl(222,14%,9%);';
+      if (!stocks.length) {
+        rows.innerHTML = '<span style="color:#475569;font-size:14px;">אין נתונים זמינים</span>';
+      } else {
+        stocks.forEach(function(item) {
+          var c = item.pass ? '#34d399' : '#f87171';
+          var bg = item.pass ? '#052e16' : '#2d0a0a';
+          var chip = document.createElement('span');
+          chip.style.cssText = 'display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:5px;font-size:14px;font-weight:600;border:1px solid ' + c + '33;background:' + bg + ';';
+          chip.innerHTML = '<span style="color:' + c + ';">' + (item.pass ? '✓' : '✗') + '</span>' +
+            ' <a href="https://www.tradingview.com/chart/?symbol=' + item.sym + '" target="_blank" rel="noopener noreferrer"' +
+            ' style="color:' + c + ';text-decoration:none;font-weight:700;">' + item.sym + '</a>' +
+            '<span style="color:' + (item.pass ? '#86efac' : '#fca5a5') + ';font-size:12px;"> ' + item.val + '</span>';
+          rows.appendChild(chip);
+          if (scores[item.sym]) {
+            scores[item.sym].total++;
+            if (item.pass) scores[item.sym].passes++;
+          }
+        });
+      }
+      wrap.appendChild(rows);
+      return wrap;
     }
 
-    renderGroup('🟢 מועמדות לקניה', buys,  '#34d399');
-    renderGroup('🔴 מועמדות למכירה', sells, '#f87171');
+    /* ── Filter 1: Growth — Revenue ─────────────── */
+    var f1 = syms.map(function(s) {
+      var r = revData[s]; if (!r) return null;
+      return { sym: s, pass: r.pct > 8, val: (r.pct >= 0 ? '+' : '') + r.pct + '%' };
+    }).filter(Boolean).sort(function(a,b){ return (b.pass-a.pass) || (b.pass ? parseFloat(b.val)-parseFloat(a.val) : parseFloat(a.val)-parseFloat(b.val)); });
+    panel.appendChild(makeFilter(1,'צמיחה','Revenue CAGR > 8%','מנוע הצמיחה — האם החברה גדלה לאורך זמן?','📈',f1));
 
-    if (!buys.length && !sells.length) {
-      var msg = document.createElement('p');
-      msg.style.cssText = 'color:#94a3b8;font-size:16.2px;text-align:center;padding:16px 0;';
-      msg.textContent = 'נתונים לא מספיקים לניתוח';
-      panel.appendChild(msg);
+    /* ── Filter 2: Valuation — PEG + FCF ─────────── */
+    var f2 = syms.map(function(s) {
+      var p = peData[s]; if (!p) return null;
+      var ep = saneFwd(p) || p.trailingPE; if (!ep) return null;
+      var r = revData[s];
+      var peg = (r && r.pct > 3) ? +(ep / r.pct).toFixed(2) : null;
+      var fd = fundData[s];
+      var fcf = fd ? fd.fcfYield : null;
+      var pass = peg ? peg < 2 : ep < 30;
+      if (fcf && fcf > 3) pass = true;
+      var val = peg ? 'PEG ' + peg : 'PE ' + fmtPE(ep);
+      if (fcf != null) val += ' · FCF ' + fcf + '%';
+      return { sym: s, pass: pass, val: val };
+    }).filter(Boolean).sort(function(a,b){ return b.pass-a.pass; });
+    panel.appendChild(makeFilter(2,'תמחור','PEG < 2 | FCF Yield > 3%','האם המחיר הגיוני ביחס לצמיחה? (PEG = P/E ÷ Revenue growth)','💰',f2));
+
+    /* ── Filter 3: Quality — Gross Margin + ROE ──── */
+    var f3 = syms.map(function(s) {
+      var g = gmData[s];
+      var fd = fundData[s];
+      if (!g && (!fd || fd.roe == null)) return null;
+      var val = '', pass = false;
+      if (g) { pass = g.pct > 40; val = 'GM ' + g.pct + '%'; }
+      if (fd && fd.roe != null) {
+        if (!g) { pass = fd.roe > 12; val = 'ROE ' + fd.roe + '%'; }
+        else { val += ' · ROE ' + fd.roe + '%'; if (fd.roe > 12) pass = true; }
+      }
+      return { sym: s, pass: pass, val: val };
+    }).filter(Boolean).sort(function(a,b){ return b.pass-a.pass; });
+    panel.appendChild(makeFilter(3,'איכות','Gross Margin > 40% | ROE > 12%','כסף אמיתי — האם החברה מרוויחה ביעילות ובאיכות?','💎',f3));
+
+    /* ── Filter 4: Risk — Debt/EBITDA ────────────── */
+    var f4 = syms.map(function(s) {
+      var fd = fundData[s];
+      if (!fd || fd.debtEbitda == null) return null;
+      return { sym: s, pass: fd.debtEbitda < 4, val: 'D/EBITDA ' + fd.debtEbitda + 'x' };
+    }).filter(Boolean).sort(function(a,b){ return b.pass-a.pass; });
+    panel.appendChild(makeFilter(4,'סיכון','Debt/EBITDA < 4','כמה חוב יש לחברה? מינוף גבוה = סיכון גבוה','🛡️',f4));
+
+    /* ── Filter 5: Momentum — MA200 ──────────────── */
+    var f5 = syms.map(function(s) {
+      var m = ma200Data[s]; if (!m) return null;
+      return { sym: s, pass: !m.below || m.pct > -20, val: (m.below ? '' : '+') + m.pct + '% vs MA200' };
+    }).filter(Boolean).sort(function(a,b){ return b.pass-a.pass; });
+    panel.appendChild(makeFilter(5,'מומנטום','Not below MA200 by > 20%','כיוון השוק — האם המניה נסחרת מעל ממוצע 200 יומי?','🚀',f5));
+
+    /* ── Summary scoreboard ──────────────────────── */
+    var ranked = syms.filter(function(s){ return scores[s] && scores[s].total > 0; })
+      .sort(function(a,b){ return scores[b].passes - scores[a].passes; });
+
+    if (ranked.length) {
+      var sumHdr = document.createElement('div');
+      sumHdr.style.cssText = 'font-weight:700;font-size:15px;color:#f59e0b;margin:14px 0 8px;padding-bottom:4px;border-bottom:1px solid #f59e0b44;direction:rtl;';
+      sumHdr.textContent = '🏆 ציון כולל — כמה פילטרים עברה כל מניה?';
+      panel.appendChild(sumHdr);
+
+      ranked.forEach(function(s) {
+        var sc = scores[s];
+        var c = sc.passes >= 4 ? '#34d399' : sc.passes >= 3 ? '#fbbf24' : sc.passes >= 2 ? '#fb923c' : '#f87171';
+        var pct = sc.total > 0 ? Math.round(sc.passes / sc.total * 100) : 0;
+        var row = document.createElement('div');
+        row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid hsl(222,14%,16%);direction:rtl;';
+        row.innerHTML =
+          '<a href="https://www.tradingview.com/chart/?symbol=' + s + '" target="_blank" rel="noopener noreferrer"' +
+          ' style="font-weight:700;font-size:15px;color:#e2e8f0;text-decoration:none;min-width:55px;">' + s + '</a>' +
+          '<div style="flex:1;background:hsl(222,14%,18%);border-radius:3px;height:7px;overflow:hidden;">' +
+          '<div style="width:' + pct + '%;height:100%;background:' + c + ';border-radius:3px;"></div></div>' +
+          '<span style="font-size:14px;font-weight:700;color:' + c + ';min-width:36px;text-align:left;">' + sc.passes + '/' + sc.total + '</span>';
+        panel.appendChild(row);
+      });
     }
   }
 
@@ -2052,22 +2082,27 @@
       return fetch(url).then(function(r){return r.json();}).catch(function(){return {};});
     }
 
-    var pMA200 = jFetch('/api/ma200?symbols='       + enc);
-    var pPE    = jFetch('/api/pe?symbols='          + enc);
-    var pRev   = jFetch('/api/revenue?symbols='     + enc);
-    var pGM    = jFetch('/api/gross_margin?symbols='+ enc);
+    var pMA200 = jFetch('/api/ma200?symbols='        + enc);
+    var pPE    = jFetch('/api/pe?symbols='           + enc);
+    var pRev   = jFetch('/api/revenue?symbols='      + enc);
+    var pGM    = jFetch('/api/gross_margin?symbols=' + enc);
+    var pFund  = jFetch('/api/fundamentals?symbols=' + enc);
 
     pMA200.then(function(d){ renderMA200(tc.panels.ma200, d); });
     pPE   .then(function(d){ renderPE(tc.panels.pe, d); });
     pRev  .then(function(d){ setupRevenuePanel(tc.panels.revenue, q, d); });
 
-    /* analysis tab needs all 4 */
-    Promise.all([pMA200, pPE, pRev, pGM]).then(function(res) {
-      renderAnalysis(tc.panels.analysis, res[0], res[1], res[2], res[3]);
+    /* analysis tab needs all 5 */
+    Promise.all([pMA200, pPE, pRev, pGM, pFund]).then(function(res) {
+      renderAnalysis(tc.panels.analysis, res[0], res[1], res[2], res[3], res[4]);
     });
   }
 
-  var obs10 = new MutationObserver(function() { injectBoxes(); });
+  var _deb10 = null;
+  var obs10 = new MutationObserver(function() {
+    clearTimeout(_deb10);
+    _deb10 = setTimeout(injectBoxes, 500);
+  });
   obs10.observe(document.body, { childList: true, subtree: true });
   setTimeout(injectBoxes, 2500);
 
@@ -2142,6 +2177,7 @@
   }
 
   function fp(el) {
+    if (el.id) return 'id:' + el.id;  // stable ID always wins
     // Use the first heading/bold element — its text is stable and doesn't change as data loads
     var h = el.querySelector('h1,h2,h3,h4,h5,th');
     if (!h) h = el.querySelector('[class*="font-bold"],[class*="font-semibold"],[class*="text-lg"],[class*="text-xl"]');
@@ -2941,6 +2977,144 @@
     linkifyTable();
     linkifyPremarket();
   }, 2000);
+
+})();
+</script>
+
+<script>
+/* =======================================================
+   Primo Portfolio Feature Patch v16
+   NYSE Market Countdown Timer
+   ======================================================= */
+(function () {
+  'use strict';
+
+  var EL_ID = 'pp-mkt-countdown';
+
+  /* ── ET time components ─────────────────────────── */
+  function getET() {
+    var now = new Date();
+    var parts = {};
+    new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/New_York',
+      weekday: 'short', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false
+    }).formatToParts(now).forEach(function(p) { parts[p.type] = p.value; });
+    var h = parseInt(parts.hour || '0');
+    if (h === 24) h = 0; // midnight edge-case
+    return {
+      weekday: parts.weekday, // 'Mon','Tue',...
+      h: h,
+      m: parseInt(parts.minute || '0'),
+      s: parseInt(parts.second || '0')
+    };
+  }
+
+  /* ── compute market state + countdown ───────────── */
+  function compute() {
+    var et = getET();
+    var tm = et.h * 60 + et.m;
+    var isWeekday = ['Mon','Tue','Wed','Thu','Fri'].indexOf(et.weekday) !== -1;
+
+    var state, color, heState, prefix, tH, tM, extraDays;
+    extraDays = 0;
+
+    if (!isWeekday) {
+      state='CLOSED'; color='#f87171'; heState='סגור';    prefix='פתיחה בעוד'; tH=9; tM=30;
+      extraDays = et.weekday === 'Sat' ? 2 : 1;
+    } else if (tm < 240) {                  // before 4:00 AM
+      state='CLOSED'; color='#f87171'; heState='סגור';    prefix='פתיחה בעוד'; tH=9; tM=30;
+    } else if (tm < 570) {                  // 4:00–9:30 AM pre-market
+      state='PRE';    color='#fbbf24'; heState='פרה-מרקט'; prefix='פתיחה בעוד'; tH=9; tM=30;
+    } else if (tm < 960) {                  // 9:30 AM–4:00 PM regular
+      state='OPEN';   color='#34d399'; heState='פתוח';    prefix='סגירה בעוד'; tH=16; tM=0;
+    } else if (tm < 1200) {                 // 4:00–8:00 PM after-hours
+      state='POST';   color='#fbbf24'; heState='אחרי שעות'; prefix='סיום בעוד'; tH=20; tM=0;
+    } else {                                // after 8 PM
+      state='CLOSED'; color='#f87171'; heState='סגור';    prefix='פתיחה בעוד'; tH=9; tM=30;
+    }
+
+    var secNow    = et.h * 3600 + et.m * 60 + et.s;
+    var secTarget = tH  * 3600 + tM  * 60;
+    var diff = secTarget - secNow + extraDays * 86400;
+    if (diff < 0) diff += 86400;
+
+    var hh = Math.floor(diff / 3600);
+    var mm = Math.floor((diff % 3600) / 60);
+    var ss = diff % 60;
+    var countdown = pad(hh) + ':' + pad(mm) + ':' + pad(ss);
+
+    return { state: state, color: color, heState: heState, prefix: prefix, countdown: countdown };
+  }
+
+  function pad(n) { return String(n).padStart(2,'0'); }
+
+  /* ── active tab check ───────────────────────────── */
+  function isDashActive() {
+    var ok = false;
+    document.querySelectorAll('button').forEach(function(b) {
+      if (b.textContent.trim() === 'דשבורד' && b.className.indexOf('border-violet-500') !== -1) ok = true;
+    });
+    return ok;
+  }
+
+  /* ── inject or update the bar ───────────────────── */
+  function render() {
+    var info = compute();
+    var bar  = document.getElementById(EL_ID);
+
+    if (!bar) {
+      bar = document.createElement('div');
+      bar.id = EL_ID;
+      bar.style.cssText = 'display:flex;align-items:center;gap:10px;padding:7px 14px;background:hsl(222,14%,9%);border-bottom:1px solid hsl(222,14%,17%);direction:rtl;flex-wrap:wrap;';
+      bar.innerHTML =
+        '<span style="font-weight:700;font-size:15px;color:#e2e8f0;">🇺🇸 NYSE</span>' +
+        '<span id="pp-mkt-state" style="padding:2px 8px;border-radius:4px;font-size:13px;font-weight:700;">' + info.heState + '</span>' +
+        '<span id="pp-mkt-prefix" style="font-size:14px;color:#64748b;">' + info.prefix + '</span>' +
+        '<span id="pp-mkt-timer" style="font-family:monospace;font-size:19px;font-weight:700;color:#e2e8f0;letter-spacing:.08em;">' + info.countdown + '</span>';
+
+      /* inject after pre-market bar if present, otherwise after header */
+      var anchor = document.getElementById('pp-premarket-bar') ||
+                   document.querySelector('header') ||
+                   document.querySelector('[class*="sticky"][class*="top"]');
+      if (anchor && anchor.parentNode) {
+        anchor.parentNode.insertBefore(bar, anchor.nextSibling);
+      } else {
+        var root = document.getElementById('root');
+        if (root && root.firstChild) root.firstChild.insertBefore(bar, root.firstChild.firstChild);
+      }
+    }
+
+    /* update values */
+    var stEl = document.getElementById('pp-mkt-state');
+    var prEl = document.getElementById('pp-mkt-prefix');
+    var tmEl = document.getElementById('pp-mkt-timer');
+    if (stEl) {
+      stEl.textContent = info.heState;
+      stEl.style.cssText = 'padding:2px 8px;border-radius:4px;font-size:13px;font-weight:700;' +
+        'color:' + info.color + ';background:' + info.color + '22;border:1px solid ' + info.color + '44;';
+    }
+    if (prEl) prEl.textContent = info.prefix;
+    if (tmEl) tmEl.textContent = info.countdown;
+
+    /* show/hide based on active tab */
+    var tabBtns = document.querySelectorAll('button');
+    var hasDash = false;
+    tabBtns.forEach(function(b) { if (b.textContent.trim() === 'דשבורד') hasDash = true; });
+    if (hasDash) bar.style.display = isDashActive() ? 'flex' : 'none';
+  }
+
+  /* ── start ──────────────────────────────────────── */
+  var _debV16 = null;
+  var obsV16 = new MutationObserver(function() {
+    clearTimeout(_debV16);
+    _debV16 = setTimeout(render, 400);
+  });
+  obsV16.observe(document.body, { childList: true, subtree: true });
+
+  setTimeout(function() {
+    render();
+    setInterval(render, 1000);
+  }, 3500);
 
 })();
 </script>
