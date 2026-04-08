@@ -160,6 +160,31 @@ async def get_revenue(symbols: str = ""):
     return JSONResponse({sym: data for sym, data in results if data})
 
 
+@app.get("/api/gross_margin")
+async def get_gross_margin(symbols: str = ""):
+    if not symbols:
+        return JSONResponse({})
+    import asyncio, concurrent.futures
+    sym_list = [s.strip().upper() for s in symbols.split(",") if s.strip()]
+
+    def fetch_one(sym):
+        try:
+            info = yf.Ticker(sym).info
+            gm = info.get("grossMargins")
+            if gm is not None:
+                return sym, {"pct": round(gm * 100, 1)}
+        except Exception as e:
+            logging.warning(f"GM {sym}: {e}")
+        return sym, None
+
+    loop = asyncio.get_event_loop()
+    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as pool:
+        tasks = [loop.run_in_executor(pool, fetch_one, s) for s in sym_list]
+        results = await asyncio.gather(*tasks)
+
+    return JSONResponse({sym: data for sym, data in results if data})
+
+
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8000))
     uvicorn.run("server:app", host="0.0.0.0", port=port)
