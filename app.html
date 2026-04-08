@@ -1482,7 +1482,7 @@
 (function () {
   'use strict';
 
-  var _ma200Box = null, _peBox = null;
+  var _ma200Box = null, _peBox = null, _revenueBox = null;
   var _fetched = false;
 
   function isInsightsTab() {
@@ -1623,6 +1623,42 @@
     section('🟢 זולות  fwd PE < 15', low, '#34d399');
   }
 
+  function renderRevenue(body, data) {
+    body.innerHTML = '';
+    var syms = Object.keys(data);
+    if (!syms.length) {
+      body.innerHTML = '<p style="color:#94a3b8;font-size:12px;">אין נתוני Revenue זמינים</p>';
+      return;
+    }
+
+    var rising  = syms.filter(function(s) { return data[s].rising; })
+                      .sort(function(a,b) { return data[b].pct - data[a].pct; });
+    var falling = syms.filter(function(s) { return !data[s].rising; })
+                      .sort(function(a,b) { return data[a].pct - data[b].pct; });
+
+    function section(title, list, color) {
+      if (!list.length) return;
+      var hdr = document.createElement('div');
+      hdr.style.cssText = 'font-weight:700;font-size:12px;color:'+color+';margin:8px 0 4px;';
+      hdr.textContent = title;
+      body.appendChild(hdr);
+      list.forEach(function(s) {
+        var d = data[s];
+        var row = document.createElement('div');
+        row.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:3px 0;border-bottom:1px solid rgba(255,255,255,0.06);';
+        var sign = d.pct > 0 ? '+' : '';
+        row.innerHTML =
+          '<span style="font-weight:600;font-size:13px;">' + s + '</span>' +
+          '<span style="font-size:11px;color:#94a3b8;">$' + d.latest + 'B</span>' +
+          '<span style="font-size:12px;font-weight:700;color:' + color + ';">' + sign + d.pct + '%</span>';
+        body.appendChild(row);
+      });
+    }
+
+    section('📈 הכנסות עולות', rising,  '#34d399');
+    section('📉 הכנסות יורדות', falling, '#f87171');
+  }
+
   /* ── find anchor in תובנות tab ───────────────────── */
   function findInsightsAnchor() {
     var anchor = null;
@@ -1642,15 +1678,16 @@
 
   function injectBoxes() {
     if (!isInsightsTab()) {
-      if (_ma200Box && _ma200Box.parentNode) _ma200Box.parentNode.removeChild(_ma200Box);
-      if (_peBox    && _peBox.parentNode)    _peBox.parentNode.removeChild(_peBox);
-      _ma200Box = _peBox = null;
+      if (_ma200Box    && _ma200Box.parentNode)    _ma200Box.parentNode.removeChild(_ma200Box);
+      if (_peBox       && _peBox.parentNode)       _peBox.parentNode.removeChild(_peBox);
+      if (_revenueBox  && _revenueBox.parentNode)  _revenueBox.parentNode.removeChild(_revenueBox);
+      _ma200Box = _peBox = _revenueBox = null;
       _fetched = false;
       return;
     }
     /* React may re-render main and remove our cards — detect and reset */
     if (_ma200Box && !document.body.contains(_ma200Box)) {
-      _ma200Box = _peBox = null;
+      _ma200Box = _peBox = _revenueBox = null;
       _fetched = false;
     }
     if (_ma200Box && document.body.contains(_ma200Box)) return;
@@ -1670,17 +1707,20 @@
     if (!target) target = document.getElementById('root');
     if (!target) return;
 
-    var ma200Card = makeCard('📉 מניות מתחת לממוצע 200 יומי', '#67e8f9');
-    var peCard    = makeCard('💰 ניתוח שווי — PE', '#a78bfa');
+    var ma200Card    = makeCard('📉 מניות מתחת לממוצע 200 יומי', '#67e8f9');
+    var peCard       = makeCard('💰 ניתוח שווי — PE', '#a78bfa');
+    var revenueCard  = makeCard('📊 מגמת הכנסות (Revenue)', '#34d399');
 
     /* main element is the tab content container */
     var main = document.querySelector('main');
     if (!main) return;
     main.appendChild(ma200Card.wrap);
     main.appendChild(peCard.wrap);
+    main.appendChild(revenueCard.wrap);
 
-    _ma200Box = ma200Card.wrap;
-    _peBox    = peCard.wrap;
+    _ma200Box   = ma200Card.wrap;
+    _peBox      = peCard.wrap;
+    _revenueBox = revenueCard.wrap;
 
     if (_fetched) return;
     _fetched = true;
@@ -1701,6 +1741,14 @@
       .then(function(data) { renderPE(peCard.body, data); })
       .catch(function() {
         peCard.body.innerHTML = '<p style="color:#f87171;font-size:12px;">שגיאה בטעינת נתוני PE</p>';
+      });
+
+    /* fetch Revenue */
+    fetch('/api/revenue?symbols=' + encodeURIComponent(q))
+      .then(function(r) { return r.json(); })
+      .then(function(data) { renderRevenue(revenueCard.body, data); })
+      .catch(function() {
+        revenueCard.body.innerHTML = '<p style="color:#f87171;font-size:12px;">שגיאה בטעינת נתוני Revenue</p>';
       });
   }
 

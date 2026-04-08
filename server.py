@@ -114,6 +114,52 @@ async def get_pe(symbols: str = ""):
     return JSONResponse({sym: data for sym, data in results if data})
 
 
+@app.get("/api/revenue")
+async def get_revenue(symbols: str = ""):
+    if not symbols:
+        return JSONResponse({})
+    import asyncio, concurrent.futures
+    sym_list = [s.strip().upper() for s in symbols.split(",") if s.strip()]
+
+    def fetch_one(sym):
+        try:
+            t = yf.Ticker(sym)
+            income = t.income_stmt
+            if income is None or income.empty:
+                return sym, None
+            # find revenue row
+            rev_row = None
+            for idx in income.index:
+                if 'Revenue' in str(idx):
+                    rev_row = income.loc[idx]
+                    break
+            if rev_row is None or rev_row.dropna().empty:
+                return sym, None
+            rev_row = rev_row.dropna().sort_index(ascending=False)
+            if len(rev_row) < 2:
+                return sym, None
+            latest, prev = float(rev_row.iloc[0]), float(rev_row.iloc[1])
+            if prev == 0:
+                return sym, None
+            pct = round((latest - prev) / abs(prev) * 100, 1)
+            return sym, {
+                "latest": round(latest / 1e9, 2),   # billions
+                "prev":   round(prev   / 1e9, 2),
+                "pct":    pct,
+                "rising": pct > 0
+            }
+        except Exception as e:
+            logging.warning(f"Revenue {sym}: {e}")
+        return sym, None
+
+    loop = asyncio.get_event_loop()
+    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as pool:
+        tasks = [loop.run_in_executor(pool, fetch_one, s) for s in sym_list]
+        results = await asyncio.gather(*tasks)
+
+    return JSONResponse({sym: data for sym, data in results if data})
+
+
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8000))
     uvicorn.run("server:app", host="0.0.0.0", port=port)
