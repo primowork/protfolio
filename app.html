@@ -33,12 +33,12 @@ html { font-size: 135% !important; }
     {id:'ils10',   date:'2025-05-27', amount:4000,  rate:3.537, note:'הפקדה IBKR — אלעד',            who:'אלעד'},
     {id:'ils11',   date:'2025-06-12', amount:20247, rate:3.60,  note:'הפקדה IBKR — ILS→USD',         who:'אלעד'},
     {id:'ils12',   date:'2025-06-20', amount:24429, rate:3.60,  note:'הפקדה IBKR — ILS→USD',         who:'אלעד'},
-    {id:'ils_sivan_0620', date:'2025-06-20', amount:6500, rate:3.60, note:'הפקדה IBKR — סיון',       who:'סיון'},
-    {id:'ils13',   date:'2025-08-06', amount:33320, rate:3.493, note:'הפקדה IBKR — סיון',            who:'סיון'},
+    {id:'ils_sivan_0620', date:'2025-06-20', amount:6500, rate:3.60, note:'הפקדה IBKR — סיון',       who:'סיוון'},
+    {id:'ils13',   date:'2025-08-06', amount:33320, rate:3.493, note:'הפקדה IBKR — סיון',            who:'סיוון'},
     {id:'ils14',   date:'2025-12-02', amount:1000,  rate:3.254, note:'הפקדה IBKR — ILS→USD',         who:'אלעד'},
-    {id:'ils_sivan_1202', date:'2025-12-02', amount:1000, rate:3.254, note:'הפקדה IBKR — סיון',      who:'סיון'},
+    {id:'ils_sivan_1202', date:'2025-12-02', amount:1000, rate:3.254, note:'הפקדה IBKR — סיון',      who:'סיוון'},
     {id:'ils15a',  date:'2026-01-19', amount:5000,  rate:3.159, note:'הפקדה IBKR — אלעד',            who:'אלעד'},
-    {id:'ils15b',  date:'2026-01-19', amount:5000,  rate:3.159, note:'הפקדה IBKR — סיון',            who:'סיון'},
+    {id:'ils15b',  date:'2026-01-19', amount:5000,  rate:3.159, note:'הפקדה IBKR — סיון',            who:'סיוון'},
     {id:'ils16',   date:'2026-03-09', amount:4000,  rate:3.086, note:'הפקדה IBKR — ILS→USD',         who:'אלעד'}
   ];
 
@@ -1114,7 +1114,7 @@ html { font-size: 135% !important; }
   function whoColor(who) {
     if (!who) return '#94a3b8';
     if (who === 'אלעד') return '#67e8f9';
-    if (who === 'סיון') return '#f9a8d4';
+    if (who === 'סיוון') return '#f9a8d4';
     return '#94a3b8';
   }
 
@@ -1271,7 +1271,7 @@ html { font-size: 135% !important; }
     var footer = document.createElement('div');
     footer.style.cssText = 'display:flex;gap:12px;margin-top:14px;flex-wrap:wrap;border-top:1px solid hsl(222,14%,20%);padding-top:12px;direction:rtl;';
 
-    var personColors = { 'אלעד': '#67e8f9', 'סיון': '#f9a8d4' };
+    var personColors = { 'אלעד': '#67e8f9', 'סיוון': '#f9a8d4' };
     Object.keys(result.byPerson).sort().forEach(function(who) {
       var p = result.byPerson[who];
       var col = personColors[who] || '#94a3b8';
