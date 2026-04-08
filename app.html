@@ -7,10 +7,10 @@ a[href*="tradingview"] { text-decoration: none !important; transition: color .15
 a[href*="tradingview"]:hover { color: #4ade80 !important; }
 /* ── Detail row smooth open ────────────────────────────── */
 @keyframes pp-detail-in {
-  from { opacity: 0; max-height: 0; transform: translateY(-6px); }
-  to   { opacity: 1; max-height: 120px; transform: translateY(0); }
+  from { opacity: 0; transform: translateY(-5px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
-td[colspan="8"] { animation: pp-detail-in 0.28s cubic-bezier(0.22,1,0.36,1); overflow: hidden; }
+tr.bg-violet-500\/5 { animation: pp-detail-in 0.25s ease-out; }
 </style>
     <div id=root></div>
     <script>
@@ -313,6 +313,10 @@ td[colspan="8"] { animation: pp-detail-in 0.28s cubic-bezier(0.22,1,0.36,1); ove
       if (bv === null) bv = _state.sortDir > 0 ? Infinity : -Infinity;
       return _state.sortDir * (av - bv);
     });
+    /* skip re-append if rows already in correct order — prevents animation loop */
+    var mainRows = Array.from(tbody.rows).filter(function(r){ return r.cells.length >= 7; });
+    var alreadyOrdered = groups.every(function(g, i){ return mainRows[i] === g.main; });
+    if (alreadyOrdered) return;
     /* disconnect observer during re-order so we don't fight React */
     obs.disconnect();
     var frag = document.createDocumentFragment();
@@ -2751,8 +2755,6 @@ td[colspan="8"] { animation: pp-detail-in 0.28s cubic-bezier(0.22,1,0.36,1); ove
       if (root && root.firstChild) root.firstChild.insertBefore(bar, root.firstChild.firstChild);
     }
 
-    /* hide immediately if not on dashboard tab */
-    if (!isDashboardActive()) bar.style.display = 'none';
   }
 
   /* ── inject 🌙 badge into holdings table rows ────── */
@@ -2836,6 +2838,11 @@ td[colspan="8"] { animation: pp-detail-in 0.28s cubic-bezier(0.22,1,0.36,1); ove
   function syncBarVisibility() {
     var bar = document.getElementById('pp-premarket-bar');
     if (!bar) return;
+    /* if no tab buttons found yet (React still loading), keep bar visible */
+    var tabButtons = document.querySelectorAll('button');
+    var hasTabs = false;
+    tabButtons.forEach(function(b){ if (b.textContent.trim() === 'דשבורד') hasTabs = true; });
+    if (!hasTabs) return;
     bar.style.display = isDashboardActive() ? '' : 'none';
   }
 
