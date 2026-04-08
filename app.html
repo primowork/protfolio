@@ -2677,6 +2677,9 @@
       var root = document.getElementById('root');
       if (root && root.firstChild) root.firstChild.insertBefore(bar, root.firstChild.firstChild);
     }
+
+    /* hide immediately if not on dashboard tab */
+    if (!isDashboardActive()) bar.style.display = 'none';
   }
 
   /* ── inject 🌙 badge into holdings table rows ────── */
@@ -2741,9 +2744,26 @@
       .then(function(data) {
         _pmData = data;
         renderBar(data);
-        injectTableBadges(data);
+        if (isDashboardActive()) injectTableBadges(data);
       })
       .catch(function() {});
+  }
+
+  /* ── detect active tab ──────────────────────────── */
+  function isDashboardActive() {
+    var active = false;
+    document.querySelectorAll('button').forEach(function(btn) {
+      if (btn.textContent.trim() === 'דשבורד' &&
+          btn.className.indexOf('border-violet-500') !== -1) active = true;
+    });
+    return active;
+  }
+
+  /* ── show/hide bar based on active tab ───────────── */
+  function syncBarVisibility() {
+    var bar = document.getElementById('pp-premarket-bar');
+    if (!bar) return;
+    bar.style.display = isDashboardActive() ? '' : 'none';
   }
 
   /* ── re-inject badges after React re-renders ─────── */
@@ -2751,8 +2771,9 @@
   var obs14 = new MutationObserver(function() {
     clearTimeout(_deb14);
     _deb14 = setTimeout(function() {
-      if (_pmData) injectTableBadges(_pmData);
-    }, 500);
+      syncBarVisibility();
+      if (_pmData && isDashboardActive()) injectTableBadges(_pmData);
+    }, 400);
   });
   obs14.observe(document.body, { childList: true, subtree: true });
 
