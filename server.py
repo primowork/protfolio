@@ -115,7 +115,7 @@ async def get_pe(symbols: str = ""):
 
 
 @app.get("/api/revenue")
-async def get_revenue(symbols: str = ""):
+async def get_revenue(symbols: str = "", period: str = "annual"):
     if not symbols:
         return JSONResponse({})
     import asyncio, concurrent.futures
@@ -124,10 +124,9 @@ async def get_revenue(symbols: str = ""):
     def fetch_one(sym):
         try:
             t = yf.Ticker(sym)
-            income = t.income_stmt
+            income = t.quarterly_income_stmt if period == "quarterly" else t.income_stmt
             if income is None or income.empty:
                 return sym, None
-            # find revenue row
             rev_row = None
             for idx in income.index:
                 if 'Revenue' in str(idx):
@@ -136,17 +135,32 @@ async def get_revenue(symbols: str = ""):
             if rev_row is None or rev_row.dropna().empty:
                 return sym, None
             rev_row = rev_row.dropna().sort_index(ascending=False)
-            if len(rev_row) < 2:
-                return sym, None
-            latest, prev = float(rev_row.iloc[0]), float(rev_row.iloc[1])
+
+            if period == "quarterly":
+                # prefer YoY quarterly (same quarter last year = iloc[3])
+                if len(rev_row) >= 4:
+                    latest, prev = float(rev_row.iloc[0]), float(rev_row.iloc[3])
+                    comp = "YoY"
+                elif len(rev_row) >= 2:
+                    latest, prev = float(rev_row.iloc[0]), float(rev_row.iloc[1])
+                    comp = "QoQ"
+                else:
+                    return sym, None
+            else:
+                if len(rev_row) < 2:
+                    return sym, None
+                latest, prev = float(rev_row.iloc[0]), float(rev_row.iloc[1])
+                comp = "YoY"
+
             if prev == 0:
                 return sym, None
             pct = round((latest - prev) / abs(prev) * 100, 1)
             return sym, {
-                "latest": round(latest / 1e9, 2),   # billions
+                "latest": round(latest / 1e9, 2),
                 "prev":   round(prev   / 1e9, 2),
                 "pct":    pct,
-                "rising": pct > 0
+                "rising": pct > 0,
+                "comp":   comp
             }
         except Exception as e:
             logging.warning(f"Revenue {sym}: {e}")

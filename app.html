@@ -1655,8 +1655,62 @@
       });
     }
 
+    var compLabel = Object.keys(data).length ? (data[Object.keys(data)[0]].comp || 'YoY') : 'YoY';
+    var lbl = document.createElement('p');
+    lbl.style.cssText = 'font-size:10px;color:#475569;margin-bottom:8px;direction:ltr;text-align:left;';
+    lbl.textContent = 'השוואה: ' + compLabel + (compLabel==='YoY' ? ' (שנה על שנה)' : ' (רבעון על רבעון)');
+    body.insertBefore(lbl, body.firstChild);
+
     section('📈 הכנסות עולות', rising,  '#34d399');
     section('📉 הכנסות יורדות', falling, '#f87171');
+  }
+
+  /* ── revenue panel with annual / quarterly toggle ── */
+  function setupRevenuePanel(panel, q, initialData) {
+    panel.innerHTML = '';
+
+    var bar = document.createElement('div');
+    bar.style.cssText = 'display:flex;gap:6px;margin-bottom:10px;direction:rtl;';
+
+    function makeBtn(label, active) {
+      var b = document.createElement('button');
+      b.textContent = label;
+      b.style.cssText = 'padding:4px 12px;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer;transition:all .15s;border:1px solid ' +
+        (active ? '#34d399;background:#34d39922;color:#34d399;' : 'hsl(222,14%,26%);background:none;color:#64748b;');
+      return b;
+    }
+
+    var btnA = makeBtn('שנתי YoY',   true);
+    var btnQ = makeBtn('רבעוני YoY', false);
+    bar.appendChild(btnA);
+    bar.appendChild(btnQ);
+    panel.appendChild(bar);
+
+    var area = document.createElement('div');
+    panel.appendChild(area);
+
+    function setActive(isAnnual) {
+      btnA.style.cssText = 'padding:4px 12px;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer;transition:all .15s;border:1px solid ' +
+        (isAnnual ? '#34d399;background:#34d39922;color:#34d399;' : 'hsl(222,14%,26%);background:none;color:#64748b;');
+      btnQ.style.cssText = 'padding:4px 12px;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer;transition:all .15s;border:1px solid ' +
+        (!isAnnual ? '#34d399;background:#34d39922;color:#34d399;' : 'hsl(222,14%,26%);background:none;color:#64748b;');
+    }
+
+    function load(period, prefetch) {
+      setActive(period === 'annual');
+      if (prefetch) { renderRevenue(area, prefetch); return; }
+      area.innerHTML = '';
+      for (var j = 0; j < 3; j++) area.appendChild(makeSkeleton());
+      fetch('/api/revenue?symbols=' + encodeURIComponent(q) + '&period=' + period)
+        .then(function(r) { return r.json(); })
+        .then(function(d) { renderRevenue(area, d); })
+        .catch(function() { area.innerHTML = '<p style="color:#f87171;font-size:12px;">שגיאה</p>'; });
+    }
+
+    btnA.addEventListener('click', function() { load('annual'); });
+    btnQ.addEventListener('click', function() { load('quarterly'); });
+
+    load('annual', initialData);
   }
 
   /* ── cross-reference all 4 metrics → BUY / SELL ─── */
@@ -1859,7 +1913,7 @@
 
     pMA200.then(function(d){ renderMA200(tc.panels.ma200, d); });
     pPE   .then(function(d){ renderPE(tc.panels.pe, d); });
-    pRev  .then(function(d){ renderRevenue(tc.panels.revenue, d); });
+    pRev  .then(function(d){ setupRevenuePanel(tc.panels.revenue, q, d); });
 
     /* analysis tab needs all 4 */
     Promise.all([pMA200, pPE, pRev, pGM]).then(function(res) {
