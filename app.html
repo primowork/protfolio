@@ -1798,6 +1798,13 @@
   }
   .pp-mover button:hover { background: #7c3aed; color: #fff; border-color: #7c3aed; }
   .pp-mover button:active { transform: scale(.92); }
+
+  /* expand all cards — no internal scroll */
+  main .max-h-48,
+  main .overflow-y-auto {
+    max-height: none !important;
+    overflow-y: visible !important;
+  }
 </style>
 
 <script>
