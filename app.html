@@ -40,6 +40,11 @@
 
   try {
     var raw = localStorage.getItem(KEY);
+    /* migrate any stored "Robinhood" strings → "פסגות" before React reads them */
+    if (raw && raw.indexOf('Robinhood') !== -1) {
+      raw = raw.replace(/Robinhood/g, 'פסגות');
+      localStorage.setItem(KEY, raw);
+    }
     var state = raw ? JSON.parse(raw) : {};
     state.ilsDeposits = DEPOSITS;
     /* ensure required fields exist so React never crashes on first visit */
