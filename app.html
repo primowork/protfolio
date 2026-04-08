@@ -1816,18 +1816,21 @@
           '<span style="font-weight:700;font-size:14px;color:#e2e8f0;">' + item.sym + '</span>' +
           '<span style="font-size:11px;font-weight:700;color:'+color+';">ציון ' + sign + item.sc + '</span>' +
         '</div>';
-        if (item.pos.length) {
-          var pe2 = document.createElement('div');
-          pe2.style.cssText = 'font-size:10px;color:#34d399;line-height:1.7;';
-          pe2.textContent = '✓ ' + item.pos.join('  ·  ');
-          card.appendChild(pe2);
+        function makeChips(factors, chipColor, bg) {
+          var wrap = document.createElement('div');
+          wrap.style.cssText = 'display:flex;flex-wrap:wrap;gap:4px;margin-top:5px;';
+          factors.forEach(function(f) {
+            var chip = document.createElement('span');
+            chip.style.cssText = 'font-size:10px;font-weight:600;color:' + chipColor +
+              ';background:' + bg + ';border:1px solid ' + chipColor + '44;' +
+              'border-radius:4px;padding:2px 6px;white-space:nowrap;';
+            chip.textContent = f;
+            wrap.appendChild(chip);
+          });
+          return wrap;
         }
-        if (item.neg.length) {
-          var ne2 = document.createElement('div');
-          ne2.style.cssText = 'font-size:10px;color:#f87171;line-height:1.7;margin-top:2px;';
-          ne2.textContent = '✗ ' + item.neg.join('  ·  ');
-          card.appendChild(ne2);
-        }
+        if (item.pos.length) card.appendChild(makeChips(item.pos, '#34d399', '#052e16'));
+        if (item.neg.length) card.appendChild(makeChips(item.neg, '#f87171', '#2d0a0a'));
         panel.appendChild(card);
       });
     }
