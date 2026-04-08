@@ -596,25 +596,11 @@
       exportExcel();
     };
 
-    var pdfBtn = document.createElement('button');
-    pdfBtn.id = 'pp-pdf-btn';
-    pdfBtn.textContent = 'PDF + גרפים';
-    pdfBtn.style.cssText = 'background:hsl(252 70% 42%);color:#fff;border:none;padding:8px 18px;font-size:13px;cursor:pointer;border-radius:4px;font-weight:600;transition:opacity .15s;';
-    pdfBtn.onmouseover = function(){ this.style.opacity='.8'; };
-    pdfBtn.onmouseout  = function(){ this.style.opacity='1';  };
-    pdfBtn.onclick = function() {
-      if (typeof html2canvas === 'undefined' || typeof window.jspdf === 'undefined') {
-        alert('ספריות PDF עדיין נטענות, נסה שוב'); return;
-      }
-      exportPDF();
-    };
-
     var desc = document.createElement('span');
     desc.style.cssText = 'font-size:10px;color:hsl(210 10% 40%);align-self:center;';
     desc.textContent = 'פורטפוליו · עסקאות · הפקדות · תובנות';
 
     row.appendChild(xlBtn);
-    row.appendChild(pdfBtn);
     row.appendChild(desc);
     section.appendChild(row);
 
