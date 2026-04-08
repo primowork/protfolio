@@ -1765,7 +1765,7 @@
         else if (peg > 3)   { sc -= 1; neg.push('PEG ' + peg + ' (גבוה)'); }
       }
 
-      if (pos.length + neg.length > 0) scored.push({ sym: s, sc: sc, pos: pos, neg: neg });
+      if (pos.length + neg.length >= 2) scored.push({ sym: s, sc: sc, pos: pos, neg: neg });
     });
 
     scored.sort(function(a, b) { return b.sc - a.sc; });
