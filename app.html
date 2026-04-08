@@ -1363,6 +1363,61 @@
     fileInput.type = 'file';
     fileInput.accept = '.html,.htm,.pdf';
     fileInput.style.display = 'none';
+    /* ── date detection helpers ──────────────────── */
+    var HE_MONTHS = ['ינואר','פברואר','מרץ','אפריל','מאי','יוני',
+                     'יולי','אוגוסט','ספטמבר','אוקטובר','נובמבר','דצמבר'];
+    var EN_MONTHS = ['january','february','march','april','may','june',
+                     'july','august','september','october','november','december'];
+
+    function detectReportName(filename, textContent) {
+      var m, month = null, year = null;
+
+      // 1. filename patterns: 14-01-26, 19.06.2025, 2025-03, 03_2026
+      var fnLower = filename.toLowerCase().replace(/\.(html?|pdf)$/,'');
+      var fnPatterns = [
+        /(\d{2})[.\-_](\d{2})[.\-_](20\d{2})/,   // DD-MM-YYYY
+        /(\d{2})[.\-_](\d{2})[.\-_](\d{2})(?!\d)/, // DD-MM-YY
+        /(20\d{2})[.\-_](\d{2})/,                   // YYYY-MM
+        /(\d{2})[.\-_](20\d{2})/                    // MM-YYYY
+      ];
+      m = fnLower.match(fnPatterns[0]);
+      if (m) { month = parseInt(m[2],10)-1; year = parseInt(m[3],10); }
+      if (!month) { m = fnLower.match(fnPatterns[1]); if(m){ month=parseInt(m[2],10)-1; year=2000+parseInt(m[3],10); } }
+      if (!month) { m = fnLower.match(fnPatterns[2]); if(m){ year=parseInt(m[1],10); month=parseInt(m[2],10)-1; } }
+      if (!month) { m = fnLower.match(fnPatterns[3]); if(m){ month=parseInt(m[1],10)-1; year=parseInt(m[2],10); } }
+
+      // 2. text content: Hebrew month names
+      if ((!month || !year) && textContent) {
+        var txt = textContent.slice(0, 5000);
+        HE_MONTHS.forEach(function(hm, idx) {
+          if (month !== null) return;
+          var re = new RegExp(hm + '[^\\d]{0,5}(20\\d{2})');
+          var res = txt.match(re);
+          if (res) { month = idx; year = parseInt(res[1],10); }
+        });
+        // English month names
+        if (month === null) {
+          EN_MONTHS.forEach(function(em, idx) {
+            if (month !== null) return;
+            var re = new RegExp(em + '[^\\d]{0,5}(20\\d{2})','i');
+            var res = txt.match(re);
+            if (res) { month = idx; year = parseInt(res[1],10); }
+          });
+        }
+        // bare year pattern near "דוח" or "report"
+        if (year === null) {
+          var ry = txt.match(/(20\d{2})/);
+          if (ry) year = parseInt(ry[1],10);
+        }
+      }
+
+      if (month !== null && year) {
+        return 'דוח ' + HE_MONTHS[month] + ' ' + year;
+      }
+      if (year) return 'דוח ' + year;
+      return null;
+    }
+
     fileInput.onchange = function(e) {
       var file = e.target.files[0];
       if (!file) return;
@@ -1370,10 +1425,13 @@
       var isPDF = file.name.toLowerCase().endsWith('.pdf');
 
       reader.onload = function(ev) {
+        var textForDetection = isPDF ? '' : ev.target.result;
+        var autoName = detectReportName(file.name, textForDetection) || file.name;
         var reports = getReports();
         reports.unshift({
           id: 'r_' + Date.now(),
-          name: file.name,
+          name: autoName,
+          originalName: file.name,
           type: isPDF ? 'pdf' : 'html',
           content: ev.target.result,
           date: new Date().toISOString()
