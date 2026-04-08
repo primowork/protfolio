@@ -1211,3 +1211,207 @@
 
 })();
 </script>
+
+<script>
+/* =======================================================
+   Primo Portfolio Feature Patch v9
+   העלאת דוחות HTML/PDF — שמירה והצגה בלשונית דוחות
+   ======================================================= */
+(function () {
+  'use strict';
+
+  var REPORTS_KEY = 'pp_uploaded_reports';
+  var _reportsSection = null;
+
+  function isReportsTab() {
+    var active = false;
+    document.querySelectorAll('button').forEach(function(btn) {
+      if (btn.textContent.trim() === 'דוחות' &&
+          btn.className.includes('border-violet-500')) active = true;
+    });
+    return active;
+  }
+
+  function getReports() {
+    try { return JSON.parse(localStorage.getItem(REPORTS_KEY) || '[]'); }
+    catch(e) { return []; }
+  }
+
+  function saveReports(list) {
+    localStorage.setItem(REPORTS_KEY, JSON.stringify(list));
+  }
+
+  function removeSection() {
+    if (_reportsSection && _reportsSection.parentNode)
+      _reportsSection.parentNode.removeChild(_reportsSection);
+    _reportsSection = null;
+  }
+
+  /* ── modal viewer ────────────────────────────────── */
+  function openViewer(report) {
+    var overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:9999;display:flex;flex-direction:column;';
+
+    var bar = document.createElement('div');
+    bar.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:10px 16px;background:hsl(222,14%,10%);border-bottom:1px solid hsl(222,14%,20%);flex-shrink:0;';
+    bar.innerHTML = '<span style="color:#e2e8f0;font-size:13px;font-weight:600;direction:rtl;">' + report.name + '</span>';
+
+    var closeBtn = document.createElement('button');
+    closeBtn.textContent = '✕ סגור';
+    closeBtn.style.cssText = 'background:none;border:1px solid hsl(222,14%,30%);color:#94a3b8;padding:4px 12px;border-radius:4px;cursor:pointer;font-size:12px;';
+    closeBtn.onclick = function() { document.body.removeChild(overlay); };
+    bar.appendChild(closeBtn);
+    overlay.appendChild(bar);
+
+    var frame = document.createElement('iframe');
+    frame.style.cssText = 'flex:1;border:none;width:100%;background:#fff;';
+
+    if (report.type === 'html') {
+      frame.srcdoc = report.content;
+    } else {
+      // PDF — use base64 data URL
+      frame.src = report.content;
+    }
+
+    overlay.appendChild(frame);
+    document.body.appendChild(overlay);
+  }
+
+  /* ── render uploaded reports list ───────────────── */
+  function renderReportsList(container) {
+    container.innerHTML = '';
+    var reports = getReports();
+
+    if (!reports.length) {
+      container.innerHTML = '<p style="color:hsl(210,10%,40%);font-size:12px;text-align:center;padding:16px;direction:rtl;">אין דוחות שמורים עדיין</p>';
+      return;
+    }
+
+    reports.forEach(function(r, i) {
+      var row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border-radius:4px;background:hsl(222,14%,12%);margin-bottom:6px;gap:8px;direction:rtl;';
+
+      var icon = r.type === 'pdf' ? '📄' : '🌐';
+      var dateStr = r.date ? r.date.slice(0,10) : '';
+
+      var info = document.createElement('div');
+      info.style.cssText = 'flex:1;min-width:0;';
+      info.innerHTML = '<div style="font-size:12px;color:#e2e8f0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + icon + ' ' + r.name + '</div>' +
+                       '<div style="font-size:10px;color:hsl(210,10%,40%);margin-top:2px;">' + dateStr + ' · ' + r.type.toUpperCase() + '</div>';
+
+      var btnGroup = document.createElement('div');
+      btnGroup.style.cssText = 'display:flex;gap:6px;flex-shrink:0;';
+
+      var viewBtn = document.createElement('button');
+      viewBtn.textContent = 'הצג';
+      viewBtn.style.cssText = 'background:hsl(195,100%,28%);color:#fff;border:none;padding:4px 10px;border-radius:3px;font-size:11px;cursor:pointer;';
+      viewBtn.onclick = function() { openViewer(r); };
+
+      var delBtn = document.createElement('button');
+      delBtn.textContent = '✕';
+      delBtn.style.cssText = 'background:hsl(0,60%,30%);color:#fff;border:none;padding:4px 8px;border-radius:3px;font-size:11px;cursor:pointer;';
+      delBtn.onclick = function() {
+        var list = getReports().filter(function(x){ return x.id !== r.id; });
+        saveReports(list);
+        renderReportsList(container);
+      };
+
+      btnGroup.appendChild(viewBtn);
+      btnGroup.appendChild(delBtn);
+      row.appendChild(info);
+      row.appendChild(btnGroup);
+      container.appendChild(row);
+    });
+  }
+
+  /* ── inject upload section ───────────────────────── */
+  function injectUploadSection() {
+    if (!isReportsTab()) { removeSection(); return; }
+    if (_reportsSection && document.body.contains(_reportsSection)) return;
+
+    var anchor = document.getElementById('pp-export-section');
+    if (!anchor) {
+      document.querySelectorAll('p').forEach(function(p) {
+        if (p.textContent.includes('שמור תמונת מצב')) {
+          var c = p.closest('div[class]');
+          if (c) anchor = c;
+        }
+      });
+    }
+    if (!anchor || !anchor.parentNode) return;
+
+    var section = document.createElement('div');
+    section.id = 'pp-upload-section';
+    section.style.cssText = 'background:hsl(222,14%,10%);border:1px solid hsl(222,14%,18%);border-radius:6px;padding:16px;margin-bottom:16px;direction:rtl;';
+
+    /* header */
+    var hdr = document.createElement('div');
+    hdr.style.cssText = 'display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px;';
+
+    var title = document.createElement('span');
+    title.style.cssText = 'font-size:15px;font-weight:700;color:#e2e8f0;';
+    title.textContent = '📂 דוחות שמורים';
+
+    /* upload button */
+    var uploadLabel = document.createElement('label');
+    uploadLabel.style.cssText = 'background:hsl(222,14%,16%);border:1px dashed hsl(222,14%,28%);color:#94a3b8;padding:6px 14px;border-radius:4px;font-size:12px;cursor:pointer;transition:border-color .15s;';
+    uploadLabel.textContent = '+ הוסף דוח (HTML / PDF)';
+    uploadLabel.onmouseover = function(){ this.style.borderColor='hsl(195,100%,40%)'; this.style.color='#67e8f9'; };
+    uploadLabel.onmouseout  = function(){ this.style.borderColor='hsl(222,14%,28%)'; this.style.color='#94a3b8'; };
+
+    var fileInput = document.createElement('input');
+    fileInput.type = 'file';
+    fileInput.accept = '.html,.htm,.pdf';
+    fileInput.style.display = 'none';
+    fileInput.onchange = function(e) {
+      var file = e.target.files[0];
+      if (!file) return;
+      var reader = new FileReader();
+      var isPDF = file.name.toLowerCase().endsWith('.pdf');
+
+      reader.onload = function(ev) {
+        var reports = getReports();
+        reports.unshift({
+          id: 'r_' + Date.now(),
+          name: file.name,
+          type: isPDF ? 'pdf' : 'html',
+          content: ev.target.result,
+          date: new Date().toISOString()
+        });
+        saveReports(reports);
+        renderReportsList(listContainer);
+      };
+
+      if (isPDF) {
+        reader.readAsDataURL(file);
+      } else {
+        reader.readAsText(file);
+      }
+      fileInput.value = '';
+    };
+
+    uploadLabel.appendChild(fileInput);
+
+    hdr.appendChild(title);
+    hdr.appendChild(uploadLabel);
+    section.appendChild(hdr);
+
+    /* list container */
+    var listContainer = document.createElement('div');
+    renderReportsList(listContainer);
+    section.appendChild(listContainer);
+
+    anchor.parentNode.insertBefore(section, anchor);
+    _reportsSection = section;
+  }
+
+  var obs9 = new MutationObserver(function() {
+    if (!isReportsTab()) { removeSection(); return; }
+    injectUploadSection();
+  });
+  obs9.observe(document.body, { childList: true, subtree: true });
+
+  setTimeout(injectUploadSection, 2200);
+
+})();
+</script>
