@@ -289,18 +289,20 @@
     groups.forEach(function(g) {
       var dc = g.main.cells[7], snap = g.main._ppSnap;
       if (!dc || !snap) return;
+      var html;
       if (state.dayMode === '%') {
         var dv = snap.dayGain, v = snap.value;
         if (dv != null && v != null) {
           var prev = v - dv;
           var pct = prev !== 0 ? dv / prev * 100 : 0;
           var pos = pct >= 0;
-          dc.innerHTML = '<span class="num" style="color:'+(pos?'#34d399':'#f87171')+';">'
+          html = '<span class="num" style="color:'+(pos?'#34d399':'#f87171')+';">'
             +(pos?'+':'')+pct.toFixed(2)+'%</span>';
         }
       } else {
-        dc.innerHTML = snap.dayHTML;
+        html = snap.dayHTML;
       }
+      if (html && dc.innerHTML !== html) dc.innerHTML = html;
     });
   }
 
@@ -355,18 +357,20 @@
     groups.forEach(function(g) {
       var dc = g.main.cells[7], snap = g.main._ppSnap;
       if (!dc || !snap) return;
+      var html;
       if (_state.dayMode === '%') {
         var dv = snap.dayGain, v = snap.value;
         if (dv != null && v != null) {
           var prev = v - dv;
           var pct = prev !== 0 ? dv / prev * 100 : 0;
           var pos = pct >= 0;
-          dc.innerHTML = '<span class="num" style="color:'+(pos?'#34d399':'#f87171')+';">'
+          html = '<span class="num" style="color:'+(pos?'#34d399':'#f87171')+';">'
             +(pos?'+':'')+pct.toFixed(2)+'%</span>';
         }
       } else {
-        dc.innerHTML = snap.dayHTML;
+        html = snap.dayHTML;
       }
+      if (html && dc.innerHTML !== html) dc.innerHTML = html;
     });
   }
 
@@ -2118,11 +2122,20 @@
   }
 
   var _deb10 = null;
+  var _lastInject = 0;
   var obs10 = new MutationObserver(function() {
-    clearTimeout(_deb10);
-    _deb10 = setTimeout(injectBoxes, 500);
+    var now = Date.now();
+    if (now - _lastInject > 2000) {
+      /* first mutation in a while — run immediately */
+      _lastInject = now;
+      clearTimeout(_deb10);
+      injectBoxes();
+    } else {
+      clearTimeout(_deb10);
+      _deb10 = setTimeout(function() { _lastInject = Date.now(); injectBoxes(); }, 2000);
+    }
   });
-  obs10.observe(document.body, { childList: true, subtree: true });
+  obs10.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
   setTimeout(injectBoxes, 2500);
 
 })();
