@@ -3180,7 +3180,7 @@
   }
 
   /* ── merge prices into localStorage → fires React re-render ─ */
-  function applyPrices(priceMap, prevCloseMap) {
+  function applyPrices(priceMap) {
     try {
       var raw = localStorage.getItem('primo_portfolio_v6');
       if (!raw) return;
@@ -3194,16 +3194,6 @@
           changed = true;
         }
       });
-      if (prevCloseMap && Object.keys(prevCloseMap).length) {
-        if (!state.prevClose) state.prevClose = {};
-        Object.keys(prevCloseMap).forEach(function(sym) {
-          var v = prevCloseMap[sym];
-          if (v && state.prevClose[sym] !== v) {
-            state.prevClose[sym] = v;
-            changed = true;
-          }
-        });
-      }
       if (changed) {
         state.pricesLastUpdated = new Date().toISOString();
         localStorage.setItem('primo_portfolio_v6', JSON.stringify(state));
@@ -3216,13 +3206,40 @@
     } catch(e) {}
   }
 
+  /* ── prevClose stored in a SEPARATE key — never triggers React re-render ── */
+  var PREV_CLOSE_KEY = 'primo_prevclose_v1';
+
+  function savePrevClose(map) {
+    if (!map || !Object.keys(map).length) return;
+    try {
+      var existing = JSON.parse(localStorage.getItem(PREV_CLOSE_KEY) || '{}');
+      var changed = false;
+      Object.keys(map).forEach(function(sym) {
+        var v = map[sym];
+        if (v && existing[sym] !== v) { existing[sym] = v; changed = true; }
+      });
+      if (changed) {
+        localStorage.setItem(PREV_CLOSE_KEY, JSON.stringify(existing));
+        /* notify pp18 to refresh day% column — does NOT trigger React */
+        window.dispatchEvent(new StorageEvent('storage', {
+          key: PREV_CLOSE_KEY, newValue: JSON.stringify(existing), storageArea: localStorage
+        }));
+      }
+    } catch(e) {}
+  }
+
+  function loadPrevClose() {
+    try { return JSON.parse(localStorage.getItem(PREV_CLOSE_KEY) || '{}'); }
+    catch(e) { return {}; }
+  }
+
   /* ── one-time boot fetch of prevClose via /api/prices ── */
   function fetchPrevClose() {
     var syms = getSymbols();
     if (!syms.length) return;
     fetch('/api/prices?symbols=' + encodeURIComponent(syms.join(',')))
       .then(function(r) { return r.json(); })
-      .then(function(data) { applyPrices({}, data.prevClose || {}); })
+      .then(function(data) { savePrevClose(data.prevClose || {}); })
       .catch(function() {});
   }
 
@@ -3268,7 +3285,8 @@
           return;
         }
         upsertBadge(false);
-        applyPrices(data.prices || {}, data.prevClose || null);
+        applyPrices(data.prices || {});
+        savePrevClose(data.prevClose || {});
         _fallbackTimer = setTimeout(pollFallback, FALLBACK_MS);
       })
       .catch(function() {
@@ -3375,9 +3393,15 @@
     BRK:  ['Berkshire Hathaway',        '#4b5563'],
   };
 
-  /* ── read prices + prevClose from localStorage ─────── */
+  /* ── read prices from main localStorage ────────────── */
   function getState() {
     try { return JSON.parse(localStorage.getItem('primo_portfolio_v6') || '{}'); }
+    catch(e) { return {}; }
+  }
+
+  /* ── read prevClose from dedicated key (no React re-render) ─ */
+  function loadPrevClose() {
+    try { return JSON.parse(localStorage.getItem('primo_prevclose_v1') || '{}'); }
     catch(e) { return {}; }
   }
 
@@ -3400,7 +3424,7 @@
 
     var state    = getState();
     var prices   = state.prices   || {};
-    var prevClose = state.prevClose || {};
+    var prevClose = loadPrevClose();
 
     /* ── add "% יום" TH if missing ─────────────────── */
     var thead = tbl.querySelector('thead tr');
@@ -3469,9 +3493,9 @@
     _deb18 = setTimeout(enhance, 300);
   }).observe(document.body, { childList: true, subtree: true });
 
-  /* ── also re-run when localStorage prices update ────── */
+  /* ── re-run when prices or prevClose update ─────────── */
   window.addEventListener('storage', function(e) {
-    if (e.key === 'primo_portfolio_v6') {
+    if (e.key === 'primo_portfolio_v6' || e.key === 'primo_prevclose_v1') {
       clearTimeout(_deb18);
       _deb18 = setTimeout(enhance, 100);
     }
