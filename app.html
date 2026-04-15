@@ -3180,7 +3180,7 @@
   }
 
   /* ── merge prices into localStorage → fires React re-render ─ */
-  function applyPrices(priceMap) {
+  function applyPrices(priceMap, prevCloseMap) {
     try {
       var raw = localStorage.getItem('primo_portfolio_v6');
       if (!raw) return;
@@ -3194,6 +3194,16 @@
           changed = true;
         }
       });
+      if (prevCloseMap && Object.keys(prevCloseMap).length) {
+        if (!state.prevClose) state.prevClose = {};
+        Object.keys(prevCloseMap).forEach(function(sym) {
+          var v = prevCloseMap[sym];
+          if (v && state.prevClose[sym] !== v) {
+            state.prevClose[sym] = v;
+            changed = true;
+          }
+        });
+      }
       if (changed) {
         state.pricesLastUpdated = new Date().toISOString();
         localStorage.setItem('primo_portfolio_v6', JSON.stringify(state));
@@ -3204,6 +3214,16 @@
         }));
       }
     } catch(e) {}
+  }
+
+  /* ── one-time boot fetch of prevClose via /api/prices ── */
+  function fetchPrevClose() {
+    var syms = getSymbols();
+    if (!syms.length) return;
+    fetch('/api/prices?symbols=' + encodeURIComponent(syms.join(',')))
+      .then(function(r) { return r.json(); })
+      .then(function(data) { applyPrices({}, data.prevClose || {}); })
+      .catch(function() {});
   }
 
   /* ── LIVE / delayed badge ───────────────────────────── */
@@ -3248,7 +3268,7 @@
           return;
         }
         upsertBadge(false);
-        applyPrices(data.prices || {});
+        applyPrices(data.prices || {}, data.prevClose || null);
         _fallbackTimer = setTimeout(pollFallback, FALLBACK_MS);
       })
       .catch(function() {
@@ -3315,6 +3335,8 @@
     connectWS();
     /* also kick off fallback immediately so prices show fast */
     pollFallback();
+    /* fetch prevClose once at startup so "יום %" column is always populated */
+    fetchPrevClose();
   }, 4000);
 
 })();
