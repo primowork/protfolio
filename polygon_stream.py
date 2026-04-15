@@ -199,10 +199,10 @@ class PolygonStream:
 
     async def _rest_fetch_one(self, session, sym: str) -> Optional[dict]:
         """Fetch latest 1-minute bar close for one symbol."""
+        from datetime import timedelta
         today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-        yesterday = datetime.now(timezone.utc)
-        # use a wide window (2 days) to always get a result
-        from_date = "2025-01-01"
+        # 5-day window covers weekends + long holiday weekends
+        from_date = (datetime.now(timezone.utc) - timedelta(days=5)).strftime("%Y-%m-%d")
         url = (f"{REST_BASE}/v2/aggs/ticker/{sym}/range/1/minute"
                f"/{from_date}/{today}"
                f"?adjusted=true&sort=desc&limit=1&apiKey={API_KEY}")
