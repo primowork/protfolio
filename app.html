@@ -3792,28 +3792,60 @@
     drawdown: '⬇️', '52w_high': '🏆', revenue_trend: '📊',
     earnings: '📅', concentration: '⚖️'
   };
-  var SEEN_KEY   = 'pp_alerts_seen_v1';
+  var HIST_KEY    = 'pp_alert_hist_v1';
+  var ONE_HOUR_MS = 3600000;
 
-  /* ── seen-state helpers ──────────────────────────── */
+  /* ── history helpers ─────────────────────────────── */
   function alertId(a) { return (a.symbol || '') + '|' + (a.type || ''); }
 
-  function loadSeen() {
-    try {
-      var raw  = JSON.parse(localStorage.getItem(SEEN_KEY) || '{}');
-      var today = new Date().toISOString().slice(0, 10);
-      if (raw.date !== today) return {};   // new day → reset
-      return raw.ids || {};
-    } catch(e) { return {}; }
+  function loadHistory() {
+    try { return JSON.parse(localStorage.getItem(HIST_KEY) || '{}'); } catch(e) { return {}; }
+  }
+  function saveHistory(h) {
+    try { localStorage.setItem(HIST_KEY, JSON.stringify(h)); } catch(e) {}
   }
 
-  function markSeen(id) {
-    try {
-      var today = new Date().toISOString().slice(0, 10);
-      var raw   = JSON.parse(localStorage.getItem(SEEN_KEY) || '{}');
-      if (raw.date !== today) raw = { date: today, ids: {} };
-      raw.ids[id] = 1;
-      localStorage.setItem(SEEN_KEY, JSON.stringify(raw));
-    } catch(e) {}
+  function startOfDay(ts) {
+    var d = new Date(ts); d.setHours(0,0,0,0); return d.getTime();
+  }
+  function startOfWeek(ts) {
+    var d = new Date(ts); d.setHours(0,0,0,0); d.setDate(d.getDate() - d.getDay()); return d.getTime();
+  }
+
+  function mergeAlerts(freshAlerts) {
+    var now  = Date.now();
+    var hist = loadHistory();
+    var expireThreshold = startOfWeek(now) - 7 * 86400000;
+    freshAlerts.forEach(function(a) {
+      var id = alertId(a);
+      if (!hist[id]) hist[id] = { firstSeen: now, alert: a };
+      else           hist[id].alert = a;
+    });
+    Object.keys(hist).forEach(function(id) {
+      if (hist[id].firstSeen < expireThreshold) delete hist[id];
+    });
+    saveHistory(hist);
+    return hist;
+  }
+
+  function bucketize(hist) {
+    var now            = Date.now();
+    var todayStart     = startOfDay(now);
+    var yesterdayStart = todayStart - 86400000;
+    var thisWeekStart  = startOfWeek(now);
+    var lastWeekStart  = thisWeekStart - 7 * 86400000;
+    var bkts = { today: [], yesterday: [], thisWeek: [], lastWeek: [] };
+    Object.keys(hist).forEach(function(id) {
+      var e = hist[id], fs = e.firstSeen;
+      if      (fs >= todayStart)     bkts.today.push(e);
+      else if (fs >= yesterdayStart) bkts.yesterday.push(e);
+      else if (fs >= thisWeekStart)  bkts.thisWeek.push(e);
+      else if (fs >= lastWeekStart)  bkts.lastWeek.push(e);
+    });
+    ['today','yesterday','thisWeek','lastWeek'].forEach(function(k) {
+      bkts[k].sort(function(a,b) { return b.firstSeen - a.firstSeen; });
+    });
+    return bkts;
   }
 
   /* ── read portfolio from localStorage ────────────── */
@@ -3851,22 +3883,19 @@
   }
 
   /* ── render one card ─────────────────────────────── */
-  function makeCard(alert, seen) {
+  function makeCard(alert, firstSeen) {
     var color = SEV_COLOR[alert.severity] || '#94a3b8';
-    var id    = alertId(alert);
-    var isNew = !seen[id];
+    var isNew = (Date.now() - firstSeen) < ONE_HOUR_MS;
 
     var div = document.createElement('div');
     div.className = 'pp-alc sev-' + (alert.severity || 'low') + (isNew ? ' pp-alc-new' : '');
 
-    /* click anywhere on card → mark as read */
+    /* click → dismiss flash immediately */
     div.addEventListener('click', function(e) {
-      /* don't intercept the TradingView link itself */
       if (e.target.tagName === 'A') return;
       if (div.classList.contains('pp-alc-new')) {
         div.classList.remove('pp-alc-new');
         div.style.animation = 'none';
-        markSeen(id);
       }
     });
 
@@ -3900,23 +3929,48 @@
     return div;
   }
 
-  /* ── render full list ────────────────────────────── */
+  /* ── render full list (bucketed by time) ─────────── */
   function renderList(alerts, generatedAt) {
     var list = document.getElementById(LIST_ID);
     if (!list) return;
     list.innerHTML = '';
 
-    if (!alerts || !alerts.length) {
+    var hist  = mergeAlerts(alerts || []);
+    var bkts  = bucketize(hist);
+    var GROUPS = [
+      { key: 'today',     label: 'היום'       },
+      { key: 'yesterday', label: 'אתמול'       },
+      { key: 'thisWeek',  label: 'השבוע'       },
+      { key: 'lastWeek',  label: 'שבוע שעבר'   }
+    ];
+    var total = 0;
+    GROUPS.forEach(function(g) { total += bkts[g.key].length; });
+
+    if (!total) {
       list.innerHTML =
         '<div style="text-align:center;padding:60px 20px;">' +
         '<div style="font-size:40px;margin-bottom:14px">✅</div>' +
         '<div style="color:#34d399;font-size:17px;font-weight:700">הכל תקין בפורטפוליו</div>' +
         '<div style="color:hsl(210,10%,35%);font-size:14px;margin-top:8px">אין התראות פעילות כרגע</div>' +
         '</div>';
+      updateBadge(0);
       return;
     }
-    var seen = loadSeen();
-    alerts.forEach(function(a) { list.appendChild(makeCard(a, seen)); });
+
+    var first = true;
+    GROUPS.forEach(function(g) {
+      if (!bkts[g.key].length) return;
+      var hdr = document.createElement('div');
+      hdr.style.cssText = 'font-size:11px;font-weight:700;color:#475569;letter-spacing:.07em;' +
+        'padding:10px 2px 5px;direction:rtl;' +
+        (first ? '' : 'margin-top:4px;border-top:1px solid hsl(222,14%,17%);');
+      hdr.textContent = g.label;
+      list.appendChild(hdr);
+      first = false;
+      bkts[g.key].forEach(function(e) { list.appendChild(makeCard(e.alert, e.firstSeen)); });
+    });
+
+    updateBadge(total);
 
     /* footer timestamp */
     if (generatedAt) {
@@ -3968,7 +4022,6 @@
         var alerts = data.alerts || [];
         _loaded = true;
         renderList(alerts, data.generated_at);
-        updateBadge(alerts.length);
         clearTimeout(_refreshTmr);
         _refreshTmr = setTimeout(function() { fetchAlerts(false); }, REFRESH_MS);
       })
