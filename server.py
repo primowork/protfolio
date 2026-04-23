@@ -816,8 +816,11 @@ async def get_insider(symbols: str = ""):
         with urllib.request.urlopen(url, timeout=8) as r:
             data = _json.loads(r.read())
         buys = [
-            {"name": tx.get("name", ""), "date": tx.get("transactionDate", ""),
-             "shares": tx.get("change", 0), "value": round((tx.get("price") or 0) * abs(tx.get("change") or 0))}
+            {"name": tx.get("name", ""),
+             "date": tx.get("transactionDate", ""),
+             "shares": tx.get("change", 0),
+             "price": tx.get("transactionPrice", 0),
+             "value": round((tx.get("transactionPrice") or 0) * abs(tx.get("change") or 0))}
             for tx in data.get("data", [])
             if tx.get("transactionCode") == "P" and (tx.get("change") or 0) > 0
         ]
