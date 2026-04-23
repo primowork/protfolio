@@ -527,7 +527,7 @@ def _check_ma200_cross(sym: str) -> list:
         ma_now  = float(ma200.iloc[-1])
         side    = "מעל" if last_cross == "up" else "מתחת ל"
         return [{"symbol": sym, "type": "ma200_cross", "severity": "high",
-                 "title": "חצייה ממוצע 200 יומי",
+                 "title": f"חצייה ממוצע 200 יומי — {'מעל' if last_cross == 'up' else 'מתחת'}",
                  "message": f"{sym} חצתה {side}ממוצע 200 יום בשבוע האחרון (מחיר: ${price:.2f} | MA200: ${ma_now:.2f})",
                  "direction": last_cross}]
     except Exception as e:
@@ -569,7 +569,7 @@ def _check_ma200w(sym: str) -> list:
         ma_now   = float(ma200w.iloc[-1])
         side     = "מעל" if last_cross == "up" else "מתחת ל"
         return [{"symbol": sym, "type": "ma200w_cross", "severity": "high",
-                 "title": "חצייה ממוצע 200 שבועי",
+                 "title": f"חצייה ממוצע 200 שבועי — {'מעל' if last_cross == 'up' else 'מתחת'}",
                  "message": f"{sym} חצתה {side}ממוצע 200 שבוע בשבוע האחרון (מחיר: ${price:.2f} | MA200W: ${ma_now:.2f})",
                  "direction": last_cross}]
     except Exception as e:
