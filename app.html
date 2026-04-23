@@ -1892,45 +1892,44 @@
     var gmD = data.gm || {}, fundD = data.fund || {}, insD = data.insider || {}, growD = data.growth || {};
     var p = peD[sym], r = revD[sym], g = gmD[sym], fd = fundD[sym];
     var m = ma200D[sym], ins = insD[sym], gt = growD[sym];
-    var passes = 0, total = 0, filters = [];
+    var SNAMES = ['📈 צמיחה','💰 תמחור','💎 איכות','🛡️ סיכון','🚀 מומנטום','📉 מגמה'];
+    var slots = [null, null, null, null, null, null];
 
-    if (r) {
-      total++; var p1 = r.pct > 8; if (p1) passes++;
-      filters.push({ name: '📈 צמיחה', pass: p1, val: (r.pct >= 0 ? '+' : '') + r.pct + '%' });
-    }
+    /* F1: Revenue CAGR */
+    if (r) { var p1 = r.pct > 8; slots[0] = { pass: p1, val: (r.pct >= 0 ? '+' : '') + r.pct + '%' }; }
+
+    /* F2: Valuation PEG/PE */
     if (p) {
       var ep = saneFwd(p) || p.trailingPE;
       if (ep) {
-        total++;
         var peg2 = (r && r.pct > 3) ? +(ep / r.pct).toFixed(2) : null;
         var fcf2 = fd ? fd.fcfYield : null;
-        var p2 = peg2 ? peg2 < 2 : ep < 30; if (fcf2 && fcf2 > 3) p2 = true; if (p2) passes++;
-        filters.push({ name: '💰 תמחור', pass: p2, val: (peg2 ? 'PEG ' + peg2 : 'PE ' + fmtPE(ep)) + (fcf2 != null ? ' · FCF ' + fcf2 + '%' : '') });
+        var p2 = peg2 ? peg2 < 2 : ep < 30; if (fcf2 && fcf2 > 3) p2 = true;
+        slots[1] = { pass: p2, val: (peg2 ? 'PEG ' + peg2 : 'PE ' + fmtPE(ep)) + (fcf2 != null ? ' · FCF ' + fcf2 + '%' : '') };
       }
     }
+
+    /* F3: Quality GM+ROE */
     if (g || (fd && fd.roe != null)) {
-      total++; var p3 = false, v3 = '';
+      var p3 = false, v3 = '';
       if (g) { p3 = g.pct > 40; v3 = 'GM ' + g.pct + '%'; }
       if (fd && fd.roe != null) { if (!g) { p3 = fd.roe > 12; v3 = 'ROE ' + fd.roe + '%'; } else { v3 += ' · ROE ' + fd.roe + '%'; if (fd.roe > 12) p3 = true; } }
-      if (p3) passes++;
-      filters.push({ name: '💎 איכות', pass: p3, val: v3 });
-    }
-    if (fd && fd.debtEbitda != null) {
-      total++; var p4 = fd.debtEbitda < 4; if (p4) passes++;
-      filters.push({ name: '🛡️ סיכון', pass: p4, val: 'D/E ' + fd.debtEbitda + 'x' });
-    } else {
-      filters.push({ name: '🛡️ סיכון', pass: null, val: 'אין נתון' });
-    }
-    if (m) {
-      total++; var p5 = !m.below || m.pct > -8; if (p5) passes++;
-      filters.push({ name: '🚀 מומנטום', pass: p5, val: (m.below ? '' : '+') + m.pct + '% MA200' });
-    }
-    if (gt) {
-      total++; var p7 = !gt.decelerating; if (p7) passes++;
-      filters.push({ name: '📉 מגמה', pass: p7, val: 'TTM ' + (gt.ttmGrowth >= 0 ? '+' : '') + gt.ttmGrowth + '%' });
+      slots[2] = { pass: p3, val: v3 };
     }
 
-    if (!total) {
+    /* F4: Debt/EBITDA */
+    if (fd && fd.debtEbitda != null) { slots[3] = { pass: fd.debtEbitda < 4, val: 'D/E ' + fd.debtEbitda + 'x' }; }
+
+    /* F5: MA200 momentum */
+    if (m) { slots[4] = { pass: !m.below || m.pct > -8, val: (m.below ? '' : '+') + m.pct + '% MA200' }; }
+
+    /* F6: Growth trend */
+    if (gt) { slots[5] = { pass: !gt.decelerating, val: 'TTM ' + (gt.ttmGrowth >= 0 ? '+' : '') + gt.ttmGrowth + '%' }; }
+
+    var total = 6;
+    var passes = slots.filter(function(f) { return f && f.pass === true; }).length;
+    var anyData = slots.some(function(f) { return f !== null; });
+    if (!anyData) {
       container.innerHTML = '<span style="color:#f87171;font-size:13px;">לא נמצאו נתונים עבור ' + sym + '</span>';
       return;
     }
@@ -1945,13 +1944,13 @@
     container.appendChild(row);
     var chips = document.createElement('div');
     chips.style.cssText = 'display:flex;flex-wrap:wrap;gap:5px;direction:rtl;';
-    filters.forEach(function(f) {
-      var c = f.pass === null ? '#475569' : f.pass ? '#34d399' : '#f87171';
+    slots.forEach(function(f, i) {
+      var c = !f ? '#475569' : f.pass ? '#34d399' : '#f87171';
       var chip = document.createElement('span');
       chip.style.cssText = 'padding:2px 8px;border-radius:5px;font-size:12px;font-weight:700;cursor:default;' +
         'color:' + c + ';background:' + c + '18;border:1px solid ' + c + '44;';
-      chip.title = f.val;
-      chip.textContent = (f.pass === null ? '— ' : f.pass ? '✓ ' : '✗ ') + f.name;
+      chip.title = f ? f.val : 'אין נתון';
+      chip.textContent = (!f ? '— ' : f.pass ? '✓ ' : '✗ ') + SNAMES[i];
       chips.appendChild(chip);
     });
     container.appendChild(chips);
