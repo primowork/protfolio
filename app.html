@@ -2045,7 +2045,8 @@
 
     /* per-stock pass counter */
     var scores = {};
-    syms.forEach(function(s) { scores[s] = { passes: 0, total: 0, filters: [] }; });
+    var FILTER_NAMES = ['📈 צמיחה','💰 תמחור','💎 איכות','🛡️ סיכון','🚀 מומנטום','📉 מגמה'];
+    syms.forEach(function(s) { scores[s] = { passes: 0, total: 0, filters: [null,null,null,null,null,null] }; });
 
     /* ── build one filter section ──────────────────── */
     function makeFilter(num, heTitle, enThreshold, purpose, icon, stocks) {
@@ -2085,7 +2086,7 @@
           if (scores[item.sym]) {
             scores[item.sym].total++;
             if (item.pass) scores[item.sym].passes++;
-            scores[item.sym].filters.push({ name: icon + ' ' + heTitle, pass: item.pass, val: item.val });
+            scores[item.sym].filters[num - 1] = { pass: item.pass, val: item.val };
           }
         });
       }
@@ -2370,13 +2371,13 @@
         /* detail row — hidden by default */
         var detail = document.createElement('div');
         detail.style.cssText = 'display:none;padding:6px 4px 8px;display:none;flex-wrap:wrap;gap:5px;direction:rtl;background:hsl(222,14%,8%);';
-        sc.filters.forEach(function(f) {
-          var fc = f.pass ? '#34d399' : '#f87171';
+        sc.filters.forEach(function(f, i) {
+          var fc = !f ? '#334155' : f.pass ? '#34d399' : '#f87171';
           var chip = document.createElement('span');
           chip.style.cssText = 'padding:2px 8px;border-radius:5px;font-size:12px;font-weight:700;' +
-            'color:' + fc + ';background:' + fc + '18;border:1px solid ' + fc + '44;';
-          chip.title = f.val;
-          chip.textContent = (f.pass ? '✓ ' : '✗ ') + f.name;
+            'color:' + fc + ';background:' + fc + '18;border:1px solid ' + fc + '33;';
+          chip.title = f ? f.val : 'אין נתון';
+          chip.textContent = (!f ? '— ' : f.pass ? '✓ ' : '✗ ') + FILTER_NAMES[i];
           detail.appendChild(chip);
         });
         rowWrap.appendChild(detail);
