@@ -1,7 +1,9 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, JSONResponse
-import uvicorn, logging, asyncio, os, json
+import uvicorn, logging, asyncio, os, json, time
+from datetime import datetime, timedelta
+import concurrent.futures
 import yfinance as yf
 
 # load .env for local dev (no-op if file absent or python-dotenv not installed)
@@ -53,6 +55,10 @@ class _WSManager:
         self._clients -= dead
 
 ws_manager = _WSManager()
+
+# ── Alerts cache (5-minute TTL) ──────────────────────────────────────
+_alerts_cache: dict = {"data": None, "ts": 0.0, "key": ""}
+ALERTS_TTL = 300
 
 
 @asynccontextmanager
@@ -450,6 +456,287 @@ async def get_premarket(symbols: str = ""):
         results = await asyncio.gather(*tasks)
 
     return JSONResponse({sym: data for sym, data in results if data})
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  ALERTS MODULE — /api/alerts
+# ═══════════════════════════════════════════════════════════════════
+
+def _check_price_move(sym: str, fi) -> list:
+    """Alert when daily price move ≥ 5%."""
+    try:
+        price = fi.last_price
+        prev  = fi.previous_close
+        if not price or not prev or prev == 0:
+            return []
+        pct = (price - prev) / prev * 100
+        if abs(pct) < 5:
+            return []
+        direction = "up" if pct > 0 else "down"
+        severity  = "high" if abs(pct) >= 8 else "medium"
+        verb      = "עלתה" if pct > 0 else "ירדה"
+        return [{"symbol": sym, "type": "price_move", "severity": severity,
+                 "title": "תנועה חדה",
+                 "message": f"{sym} {verb} {abs(pct):.1f}% היום",
+                 "direction": direction}]
+    except Exception as e:
+        logging.debug(f"price_move {sym}: {e}")
+        return []
+
+
+def _check_ma200_cross(sym: str, fi) -> list:
+    """Alert when price crosses the 200-day moving average."""
+    try:
+        price = fi.last_price
+        prev  = fi.previous_close
+        ma200 = getattr(fi, "two_hundred_day_average", None)
+        if not price or not prev or not ma200 or ma200 == 0:
+            return []
+        was_above = prev  >= ma200
+        now_above = price >= ma200
+        if was_above == now_above:
+            return []
+        direction = "up" if now_above else "down"
+        side      = "מעל" if now_above else "מתחת ל"
+        return [{"symbol": sym, "type": "ma200_cross", "severity": "medium",
+                 "title": "חציית ממוצע 200 יומי",
+                 "message": f"{sym} חצתה {side}ממוצע הנע 200 יום (MA200: ${ma200:.2f})",
+                 "direction": direction}]
+    except Exception as e:
+        logging.debug(f"ma200_cross {sym}: {e}")
+        return []
+
+
+def _check_52w_high(sym: str, fi) -> list:
+    """Alert when price is within 2% of the 52-week high."""
+    try:
+        price    = fi.last_price
+        high52   = getattr(fi, "year_high", None)
+        if not price or not high52 or high52 == 0:
+            return []
+        if price < high52 * 0.98:
+            return []
+        pct = price / high52 * 100
+        return [{"symbol": sym, "type": "52w_high", "severity": "low",
+                 "title": "קרוב לשיא שנתי",
+                 "message": f"{sym} ב-${price:.2f} — {pct:.1f}% מהשיא של 52 שבועות ${high52:.2f}",
+                 "direction": "up"}]
+    except Exception as e:
+        logging.debug(f"52w_high {sym}: {e}")
+        return []
+
+
+def _check_drawdown(sym: str) -> list:
+    """Alert when price drops ≥ 10% from the 14-day high."""
+    try:
+        import pandas as pd
+        hist = yf.download(sym, period="20d", auto_adjust=True, progress=False, threads=False)
+        if hist.empty:
+            return []
+        closes = hist["Close"].dropna()
+        if len(closes) < 5:
+            return []
+        vals = closes.values.flatten() if hasattr(closes.values, "flatten") else list(closes.values)
+        window = vals[-14:] if len(vals) >= 14 else vals
+        recent_high = max(window)
+        current     = float(vals[-1])
+        if recent_high <= 0:
+            return []
+        drawdown = (current - recent_high) / recent_high * 100
+        if drawdown > -10:
+            return []
+        severity = "high" if drawdown <= -15 else "medium"
+        return [{"symbol": sym, "type": "drawdown", "severity": severity,
+                 "title": "ירידה מהשיא",
+                 "message": f"{sym} ירדה {abs(drawdown):.1f}% מהשיא ב-14 הימים האחרונים (שיא: ${recent_high:.2f})",
+                 "direction": "down"}]
+    except Exception as e:
+        logging.debug(f"drawdown {sym}: {e}")
+        return []
+
+
+def _check_revenue_trend(sym: str) -> list:
+    """Alert on strong positive or negative revenue trend (YoY quarterly)."""
+    try:
+        t = yf.Ticker(sym)
+        income = t.quarterly_income_stmt
+        if income is None or income.empty:
+            return []
+        rev_row = None
+        for idx in income.index:
+            if "Revenue" in str(idx):
+                rev_row = income.loc[idx]
+                break
+        if rev_row is None:
+            return []
+        rev = rev_row.dropna().sort_index(ascending=False)
+        if len(rev) < 4:
+            return []
+        vals = [float(rev.iloc[i]) for i in range(4)]
+        if vals[3] == 0:
+            return []
+        yoy_pct = (vals[0] - vals[3]) / abs(vals[3]) * 100
+        diffs   = [vals[i] - vals[i + 1] for i in range(3)]
+        all_up   = all(d > 0 for d in diffs)
+        all_down = all(d < 0 for d in diffs)
+
+        if all_down and yoy_pct < -5:
+            return [{"symbol": sym, "type": "revenue_trend", "severity": "medium",
+                     "title": "מגמת הכנסות שלילית",
+                     "message": f"{sym}: הכנסות ירדו {abs(yoy_pct):.1f}% YoY, מגמה רבעונית שלילית עקבית",
+                     "direction": "down"}]
+        if all_up and yoy_pct > 10:
+            return [{"symbol": sym, "type": "revenue_trend", "severity": "low",
+                     "title": "מגמת הכנסות חיובית",
+                     "message": f"{sym}: הכנסות גדלו {yoy_pct:.1f}% YoY, מגמה רבעונית חיובית עקבית",
+                     "direction": "up"}]
+        return []
+    except Exception as e:
+        logging.debug(f"revenue_trend {sym}: {e}")
+        return []
+
+
+def _check_earnings(sym: str) -> list:
+    """Alert when earnings date is within the next 14 days."""
+    try:
+        t   = yf.Ticker(sym)
+        cal = t.calendar
+        if cal is None:
+            return []
+        # calendar can be a dict or DataFrame depending on yfinance version
+        if isinstance(cal, dict):
+            dates = cal.get("Earnings Date", [])
+        elif hasattr(cal, "to_dict"):
+            dates = cal.get("Earnings Date", []) if hasattr(cal, "get") else []
+        else:
+            return []
+        if not isinstance(dates, (list, tuple)):
+            dates = [dates]
+
+        now      = datetime.utcnow()
+        horizon  = now + timedelta(days=14)
+        alerts   = []
+        for ed in dates:
+            if ed is None:
+                continue
+            # Convert pandas Timestamp to datetime if needed
+            if hasattr(ed, "to_pydatetime"):
+                ed = ed.to_pydatetime()
+            if hasattr(ed, "replace"):
+                ed_naive = ed.replace(tzinfo=None) if getattr(ed, "tzinfo", None) else ed
+                if now <= ed_naive <= horizon:
+                    days_left = max(0, (ed_naive - now).days)
+                    alerts.append({"symbol": sym, "type": "earnings", "severity": "medium",
+                                   "title": "דוח רווחים קרוב",
+                                   "message": f"{sym}: דוח רווחים צפוי בעוד {days_left} ימים ({ed_naive.strftime('%d/%m/%Y')})",
+                                   "direction": "neutral"})
+        return alerts
+    except Exception as e:
+        logging.debug(f"earnings {sym}: {e}")
+        return []
+
+
+def _check_concentration(sym_list: list, shares_map: dict) -> list:
+    """Alert when a single position exceeds 25% of total portfolio value."""
+    try:
+        syms_with_shares = [s for s in sym_list if s in shares_map and shares_map[s] > 0]
+        if not syms_with_shares:
+            return []
+        tickers = yf.Tickers(" ".join(syms_with_shares))
+        values  = {}
+        for sym in syms_with_shares:
+            try:
+                price = tickers.tickers[sym].fast_info.last_price
+                if price:
+                    values[sym] = price * shares_map[sym]
+            except Exception:
+                pass
+        total = sum(values.values())
+        if total <= 0:
+            return []
+        alerts = []
+        for sym, val in values.items():
+            pct = val / total * 100
+            if pct >= 25:
+                severity = "high" if pct >= 40 else "medium"
+                alerts.append({"symbol": sym, "type": "concentration", "severity": severity,
+                                "title": "ריכוז פורטפוליו גבוה",
+                                "message": f"{sym} מהווה {pct:.1f}% מהפורטפוליו (${val:,.0f} מתוך ${ total:,.0f})",
+                                "direction": "neutral"})
+        return alerts
+    except Exception as e:
+        logging.warning(f"concentration check: {e}")
+        return []
+
+
+def _run_sym_checks(sym: str, shares_map: dict) -> list:
+    """Run all per-symbol alert checks in a single thread."""
+    alerts = []
+    try:
+        fi = yf.Ticker(sym).fast_info
+        alerts += _check_price_move(sym, fi)
+        alerts += _check_ma200_cross(sym, fi)
+        alerts += _check_52w_high(sym, fi)
+    except Exception as e:
+        logging.warning(f"fast_info {sym}: {e}")
+    alerts += _check_drawdown(sym)
+    alerts += _check_revenue_trend(sym)
+    alerts += _check_earnings(sym)
+    return alerts
+
+
+async def _compute_alerts(sym_list: list, shares_map: dict) -> dict:
+    loop = asyncio.get_event_loop()
+    all_alerts: list = []
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as pool:
+        sym_tasks  = [loop.run_in_executor(pool, _run_sym_checks, s, shares_map) for s in sym_list]
+        conc_task  = loop.run_in_executor(pool, _check_concentration, sym_list, shares_map)
+        results    = await asyncio.gather(*sym_tasks, conc_task, return_exceptions=True)
+
+    for r in results:
+        if isinstance(r, list):
+            all_alerts.extend(r)
+        elif isinstance(r, Exception):
+            logging.warning(f"alerts task error: {r}")
+
+    order = {"high": 0, "medium": 1, "low": 2}
+    all_alerts.sort(key=lambda a: (order.get(a.get("severity", "low"), 2), a.get("symbol", "")))
+
+    return {
+        "alerts": all_alerts,
+        "count": len(all_alerts),
+        "generated_at": datetime.utcnow().isoformat(),
+    }
+
+
+@app.get("/api/alerts")
+async def get_alerts(symbols: str = "", shares: str = ""):
+    if not symbols:
+        return JSONResponse({"alerts": [], "count": 0,
+                             "generated_at": datetime.utcnow().isoformat()})
+
+    sym_list  = [s.strip().upper() for s in symbols.split(",") if s.strip()]
+    cache_key = symbols + "|" + shares
+    now       = time.time()
+
+    if (_alerts_cache["data"] is not None
+            and now - _alerts_cache["ts"] < ALERTS_TTL
+            and _alerts_cache["key"] == cache_key):
+        return JSONResponse(_alerts_cache["data"])
+
+    shares_map: dict = {}
+    for part in (shares.split(",") if shares else []):
+        if ":" in part:
+            sym, cnt = part.split(":", 1)
+            try:
+                shares_map[sym.strip().upper()] = float(cnt.strip())
+            except ValueError:
+                pass
+
+    result = await _compute_alerts(sym_list, shares_map)
+    _alerts_cache.update({"data": result, "ts": now, "key": cache_key})
+    return JSONResponse(result)
 
 
 if __name__ == "__main__":
