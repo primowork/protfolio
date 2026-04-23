@@ -2015,15 +2015,14 @@
 
     /* ── Multiple Compression Risk ──────────────── */
     (function() {
-      var PE_FLOOR = 15;   // S&P 500 historical average — implied PE can't drop below this
-      var MIN_CAGR = 5;    // below this, "compression" is meaningless (multiple already small)
+      var PE_FLOOR = 15;
+      var MIN_CAGR = 5;
 
       var mcRows = [];
       syms.forEach(function(s) {
         var p = peData[s];
         var g = growthData[s];
         if (!p || !g) return;
-        /* Trailing PE first (what the market is actually paying now) */
         var pe = p.trailingPE || p.forwardPE;
         if (!pe || pe <= 0) return;
         mcRows.push({
@@ -2035,33 +2034,23 @@
 
       if (!mcRows.length) return;
 
-      /* classify and compute per-row */
       mcRows.forEach(function(r) {
-        // Gate 1: negative growth → model not applicable
         if (r.cagr === null || r.ttm === null || r.cagr < 0 || r.ttm < 0) {
-          r.status = 'na_neg';
-          return;
+          r.status = 'na_neg'; return;
         }
-        // Gate 2: low historical growth → multiple already compressed
         if (r.cagr < MIN_CAGR) {
-          r.status = 'na_low';
-          return;
+          r.status = 'na_low'; return;
         }
-        // Gate 3: accelerating → upside scenario (don't quote fake %)
         if (r.ttm >= r.cagr) {
-          r.status = 'upside';
-          r.peg = r.pe / r.cagr;
-          return;
+          r.status = 'upside'; r.peg = r.pe / r.cagr; return;
         }
-        // Real compression math
         r.peg = r.pe / r.cagr;
         var rawImplied = r.peg * r.ttm;
-        r.impliedPE = Math.max(rawImplied, PE_FLOOR);  // floor at 15
+        r.impliedPE = Math.max(rawImplied, PE_FLOOR);
         r.impact = ((r.impliedPE / r.pe) - 1) * 100;
         r.status = r.impact <= -40 ? 'high' : r.impact <= -20 ? 'medium' : 'mild';
       });
 
-      /* sort: actual risks first (worst impact), then upside, then N/A */
       var order = { high: 0, medium: 1, mild: 2, upside: 3, na_low: 4, na_neg: 5 };
       mcRows.sort(function(a,b){
         var da = order[a.status], db = order[b.status];
@@ -2070,9 +2059,15 @@
         return 0;
       });
 
+      var COLOR = { high: '#f87171', medium: '#fb923c', mild: '#fbbf24', upside: '#34d399', na: '#64748b' };
+      var MC_KEY = 'pp_mc_expanded';
+      var expanded = false;
+      try { expanded = localStorage.getItem(MC_KEY) === '1'; } catch(e) {}
+
       var wrap = document.createElement('div');
       wrap.style.cssText = 'margin-top:16px;border:1px solid hsl(222,14%,20%);border-radius:6px;overflow:hidden;';
 
+      /* ── header with toggle button ── */
       var hdr = document.createElement('div');
       hdr.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:7px 12px;background:hsl(222,14%,13%);direction:rtl;';
       hdr.innerHTML =
@@ -2080,6 +2075,11 @@
           '<span style="font-size:15px;font-weight:700;color:#e2e8f0;">🗜️ סיכון כיווץ מכפילים</span>' +
         '</div>' +
         '<span style="font-size:12px;color:#475569;direction:ltr;font-family:monospace;">PEG × TTM = implied PE (floor 15)</span>';
+
+      var toggleBtn = document.createElement('button');
+      toggleBtn.style.cssText = 'margin-right:8px;padding:3px 10px;border-radius:4px;font-size:13px;font-weight:600;cursor:pointer;border:1px solid hsl(222,14%,28%);background:none;color:#64748b;white-space:nowrap;';
+      toggleBtn.textContent = expanded ? 'כווץ ▲' : 'הרחב ▼';
+      hdr.insertBefore(toggleBtn, hdr.firstChild);
       wrap.appendChild(hdr);
 
       var desc = document.createElement('div');
@@ -2087,7 +2087,26 @@
       desc.textContent = '⟶ אם הצמיחה האטה, השוק מכווץ את המכפיל לפי אותו PEG — מה ההשפעה על מחיר המניה?';
       wrap.appendChild(desc);
 
-      var COLOR = { high: '#f87171', medium: '#fb923c', mild: '#fbbf24', upside: '#34d399', na: '#64748b' };
+      /* ── compact chip row (always visible) ── */
+      var chipRow = document.createElement('div');
+      chipRow.style.cssText = 'padding:8px 12px;display:flex;flex-wrap:wrap;gap:5px;direction:rtl;background:hsl(222,14%,10%);border-top:1px solid hsl(222,14%,17%);';
+      mcRows.forEach(function(r) {
+        var chip = document.createElement('span');
+        var col, label;
+        if      (r.status === 'na_neg') { col = '#f87171'; label = r.s + ' 🚨'; }
+        else if (r.status === 'na_low') { col = '#fbbf24'; label = r.s + ' ⚠️'; }
+        else if (r.status === 'upside') { col = '#34d399'; label = r.s + ' ↑';  }
+        else { col = COLOR[r.status]; label = r.s + ' ' + r.impact.toFixed(0) + '%'; }
+        chip.style.cssText = 'padding:2px 8px;border-radius:5px;font-size:13px;font-weight:700;color:' + col +
+          ';background:' + col + '18;border:1px solid ' + col + '44;';
+        chip.textContent = label;
+        chipRow.appendChild(chip);
+      });
+      wrap.appendChild(chipRow);
+
+      /* ── expanded detail rows (hidden by default) ── */
+      var expandSection = document.createElement('div');
+      expandSection.style.display = expanded ? 'block' : 'none';
 
       mcRows.forEach(function(r) {
         var row = document.createElement('div');
@@ -2125,7 +2144,6 @@
           badge.innerHTML = '<div style="font-size:12px;font-weight:700;color:' + COLOR.upside + ';">האצה ↑</div>' +
                             '<div style="font-size:10.5px;color:' + COLOR.upside + ';opacity:.8;">צפי להתרחבות מכפילים</div>';
         } else {
-          /* compression risk (mild / medium / high) */
           var col = COLOR[r.status];
           mid.innerHTML =
             'PE <b style="color:#e2e8f0">' + r.pe.toFixed(1) + '</b> · ' +
@@ -2133,7 +2151,6 @@
             'TTM <b style="color:#fb923c">' + (r.ttm>=0?'+':'') + r.ttm.toFixed(1) + '%</b> · ' +
             'PEG <b style="color:#a78bfa">' + r.peg.toFixed(2) + '</b> · ' +
             'PE משוער <b style="color:' + col + '">' + r.impliedPE.toFixed(1) + '</b>';
-
           var label = r.status === 'high' ? '⚠ סיכון גבוה' :
                       r.status === 'medium' ? '⚠ אזהרה' : 'ℹ סיכון קל';
           badge.innerHTML =
@@ -2144,7 +2161,16 @@
         row.appendChild(symCol);
         row.appendChild(mid);
         row.appendChild(badge);
-        wrap.appendChild(row);
+        expandSection.appendChild(row);
+      });
+
+      wrap.appendChild(expandSection);
+
+      toggleBtn.addEventListener('click', function() {
+        expanded = !expanded;
+        expandSection.style.display = expanded ? 'block' : 'none';
+        toggleBtn.textContent = expanded ? 'כווץ ▲' : 'הרחב ▼';
+        try { localStorage.setItem(MC_KEY, expanded ? '1' : '0'); } catch(e) {}
       });
 
       panel.appendChild(wrap);
