@@ -909,11 +909,26 @@ async def get_growth_trend(symbols: str = ""):
                 q_rev = _find_revenue(q_income)
                 if q_rev is not None:
                     q_vals = q_rev.dropna().sort_index(ascending=False)
-                    if len(q_vals) >= 8:
-                        ttm     = sum(float(q_vals.iloc[i]) for i in range(4))
+                    n = len(q_vals)
+                    if n >= 8:
+                        # Ideal: true TTM (last 4 quarters vs prior 4 quarters)
+                        ttm      = sum(float(q_vals.iloc[i]) for i in range(4))
                         prev_ttm = sum(float(q_vals.iloc[i]) for i in range(4, 8))
                         if prev_ttm != 0:
                             ttm_growth = (ttm - prev_ttm) / abs(prev_ttm) * 100
+                    elif n >= 5:
+                        # Partial: compare N-quarter window to same window a year ago
+                        k = min(4, n - 4)
+                        recent = sum(float(q_vals.iloc[i]) for i in range(k))
+                        prior  = sum(float(q_vals.iloc[i]) for i in range(4, 4 + k))
+                        if prior != 0:
+                            ttm_growth = (recent - prior) / abs(prior) * 100
+                    elif n >= 4:
+                        # Fallback: YoY same-quarter (Q_latest vs Q_latest-last-year)
+                        latest = float(q_vals.iloc[0])
+                        yoy    = float(q_vals.iloc[3])
+                        if yoy != 0:
+                            ttm_growth = (latest - yoy) / abs(yoy) * 100
 
             # ── CAGR: 3-year from annual income statement ──
             a_income = t.income_stmt
@@ -927,6 +942,16 @@ async def get_growth_trend(symbols: str = ""):
                         cagr = ((a_list[0] / a_list[3]) ** (1.0 / 3) - 1) * 100
                     elif len(a_list) >= 3 and a_list[2] > 0:
                         cagr = ((a_list[0] / a_list[2]) ** (1.0 / 2) - 1) * 100
+                    elif len(a_list) >= 2 and a_list[1] > 0:
+                        cagr = ((a_list[0] / a_list[1]) - 1) * 100
+
+            # Last-resort fallback: if quarterly failed, derive TTM from annual YoY
+            if ttm_growth is None and a_income is not None and not a_income.empty:
+                a_rev = _find_revenue(a_income)
+                if a_rev is not None:
+                    a_vals = a_rev.dropna().sort_index(ascending=False)
+                    if len(a_vals) >= 2 and float(a_vals.iloc[1]) != 0:
+                        ttm_growth = (float(a_vals.iloc[0]) - float(a_vals.iloc[1])) / abs(float(a_vals.iloc[1])) * 100
 
             if ttm_growth is None or cagr is None:
                 return sym, None
