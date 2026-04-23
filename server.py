@@ -229,10 +229,20 @@ async def get_revenue(symbols: str = "", period: str = "annual"):
             if income is None or income.empty:
                 return sym, None
             rev_row = None
+            # Prefer exact "Total Revenue" first, then "Operating Revenue",
+            # then any row containing "Revenue" that is NOT a cost/expense row.
             for idx in income.index:
-                if 'Revenue' in str(idx):
-                    rev_row = income.loc[idx]
-                    break
+                if str(idx).strip() == "Total Revenue":
+                    rev_row = income.loc[idx]; break
+            if rev_row is None:
+                for idx in income.index:
+                    if str(idx).strip() == "Operating Revenue":
+                        rev_row = income.loc[idx]; break
+            if rev_row is None:
+                for idx in income.index:
+                    s = str(idx)
+                    if "Revenue" in s and "Cost" not in s and "Expense" not in s:
+                        rev_row = income.loc[idx]; break
             if rev_row is None or rev_row.dropna().empty:
                 return sym, None
             rev_row = rev_row.dropna().sort_index(ascending=False)
@@ -896,8 +906,18 @@ async def get_growth_trend(symbols: str = ""):
     sym_list = [s.strip().upper() for s in symbols.split(",") if s.strip()]
 
     def _find_revenue(income):
+        # 1. exact match — "Total Revenue" is yfinance's standard revenue row
         for idx in income.index:
-            if "Revenue" in str(idx):
+            if str(idx).strip() == "Total Revenue":
+                return income.loc[idx]
+        # 2. "Operating Revenue" fallback (used by some industries)
+        for idx in income.index:
+            if str(idx).strip() == "Operating Revenue":
+                return income.loc[idx]
+        # 3. Any "Revenue" row that is NOT "Cost Of Revenue" or similar expense row
+        for idx in income.index:
+            s = str(idx)
+            if "Revenue" in s and "Cost" not in s and "Expense" not in s:
                 return income.loc[idx]
         return None
 
