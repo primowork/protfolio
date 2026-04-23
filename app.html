@@ -2021,13 +2021,105 @@
     }
   }
 
-  /* ── tabbed container for all 4 insight panels ──── */
+  /* ── helpers for alerts tab ─────────────────────── */
+  function getSharesParam(syms) {
+    try {
+      var s = JSON.parse(localStorage.getItem('primo_portfolio_v6') || '{}');
+      var txns = s.transactions || [];
+      var net = {};
+      txns.forEach(function(t) {
+        var sym = (t.ticker || t.symbol || '').toUpperCase();
+        if (!sym) return;
+        var sh = parseFloat(t.shares) || 0;
+        if (!net[sym]) net[sym] = 0;
+        net[sym] += (t.type === 'sell' ? -sh : sh);
+      });
+      return Object.keys(net)
+        .filter(function(k) { return net[k] > 0; })
+        .map(function(k) { return k + ':' + net[k]; })
+        .join(',');
+    } catch(e) { return ''; }
+  }
+
+  function renderAlerts(panel, data) {
+    panel.innerHTML = '';
+    var alerts = (data && data.alerts) || [];
+    var sevColor  = { high: '#f87171', medium: '#fb923c', low: '#60a5fa' };
+    var sevHe     = { high: 'גבוה', medium: 'בינוני', low: 'נמוך' };
+    var typeIcon  = {
+      price_move:    '📈', ma200_cross: '📉', drawdown: '⬇️',
+      '52w_high':    '🏆', revenue_trend: '📊', earnings: '📅',
+      concentration: '⚖️'
+    };
+
+    /* header row */
+    var hdr = document.createElement('div');
+    hdr.style.cssText = 'display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;direction:rtl;';
+    var countEl = document.createElement('span');
+    countEl.style.cssText = 'font-size:13.5px;color:hsl(210,10%,40%);';
+    countEl.textContent = alerts.length ? alerts.length + ' התראות פעילות' : 'אין התראות פעילות';
+    hdr.appendChild(countEl);
+    if (data && data.generated_at) {
+      try {
+        var ts = document.createElement('span');
+        ts.style.cssText = 'font-size:11px;color:hsl(210,10%,30%);';
+        ts.textContent = 'עודכן ' + new Date(data.generated_at).toLocaleTimeString('he-IL', {hour:'2-digit',minute:'2-digit'});
+        hdr.appendChild(ts);
+      } catch(e) {}
+    }
+    panel.appendChild(hdr);
+
+    if (!alerts.length) {
+      var empty = document.createElement('div');
+      empty.style.cssText = 'text-align:center;padding:36px 16px;';
+      empty.innerHTML = '<div style="font-size:30px;margin-bottom:10px;">✅</div>' +
+        '<div style="color:#34d399;font-size:16.2px;font-weight:600;">הכל תקין בפורטפוליו</div>' +
+        '<div style="color:hsl(210,10%,35%);font-size:13.5px;margin-top:6px;">אין התראות פעילות כרגע</div>';
+      panel.appendChild(empty);
+      return;
+    }
+
+    /* scrollable list */
+    var list = document.createElement('div');
+    list.style.cssText = 'display:flex;flex-direction:column;gap:8px;max-height:480px;overflow-y:auto;padding-left:2px;';
+    panel.appendChild(list);
+
+    alerts.forEach(function(alert) {
+      var color = sevColor[alert.severity] || '#94a3b8';
+      var icon  = typeIcon[alert.type] || '🔔';
+      var sevLabel = sevHe[alert.severity] || '';
+
+      var card = document.createElement('div');
+      card.style.cssText = 'background:hsl(222,14%,10%);border:1px solid hsl(222,14%,18%);border-right:3px solid ' + color + ';border-radius:4px;padding:10px 14px;direction:rtl;';
+
+      var top = document.createElement('div');
+      top.style.cssText = 'display:flex;align-items:center;justify-content:space-between;margin-bottom:3px;';
+      top.innerHTML =
+        '<div style="display:flex;align-items:center;gap:7px;">' +
+        '<span style="font-size:16px;">' + icon + '</span>' +
+        '<span style="font-weight:700;font-size:16.2px;color:#e2e8f0;">' + alert.symbol + '</span>' +
+        '<span style="font-weight:700;font-size:14.8px;color:' + color + ';">' + (alert.title || '') + '</span>' +
+        '</div>' +
+        '<span style="font-size:11px;font-weight:700;color:' + color + ';background:' + color + '22;border:1px solid ' + color + '44;padding:1px 7px;border-radius:3px;">' + sevLabel + '</span>';
+      card.appendChild(top);
+
+      var msg = document.createElement('div');
+      msg.style.cssText = 'font-size:14px;color:#94a3b8;line-height:1.4;';
+      msg.textContent = alert.message || '';
+      card.appendChild(msg);
+
+      list.appendChild(card);
+    });
+  }
+
+  /* ── tabbed container for all 5 insight panels ──── */
   function makeInsightTabs() {
     var TAB_DEFS = [
-      { id: 'analysis', label: '🧠 ניתוח',   color: '#f59e0b' },
-      { id: 'ma200',    label: '📉 MA200',    color: '#67e8f9' },
-      { id: 'pe',       label: '💰 PE',       color: '#a78bfa' },
-      { id: 'revenue',  label: '📊 Revenue',  color: '#34d399' },
+      { id: 'analysis', label: '🧠 ניתוח',     color: '#f59e0b' },
+      { id: 'ma200',    label: '📉 MA200',      color: '#67e8f9' },
+      { id: 'pe',       label: '💰 PE',         color: '#a78bfa' },
+      { id: 'revenue',  label: '📊 Revenue',    color: '#34d399' },
+      { id: 'alerts',   label: '🔔 התראות',    color: '#f87171' },
     ];
 
     var wrap = document.createElement('div');
@@ -2098,22 +2190,26 @@
     if (_fetched) return;
     _fetched = true;
 
-    var q = syms.join(',');
-    var enc = encodeURIComponent(q);
+    var q          = syms.join(',');
+    var enc        = encodeURIComponent(q);
+    var sharesParam = getSharesParam(syms);
 
     function jFetch(url) {
       return fetch(url).then(function(r){return r.json();}).catch(function(){return {};});
     }
 
-    var pMA200 = jFetch('/api/ma200?symbols='        + enc);
-    var pPE    = jFetch('/api/pe?symbols='           + enc);
-    var pRev   = jFetch('/api/revenue?symbols='      + enc);
-    var pGM    = jFetch('/api/gross_margin?symbols=' + enc);
-    var pFund  = jFetch('/api/fundamentals?symbols=' + enc);
+    var pMA200   = jFetch('/api/ma200?symbols='        + enc);
+    var pPE      = jFetch('/api/pe?symbols='           + enc);
+    var pRev     = jFetch('/api/revenue?symbols='      + enc);
+    var pGM      = jFetch('/api/gross_margin?symbols=' + enc);
+    var pFund    = jFetch('/api/fundamentals?symbols=' + enc);
+    var alertsUrl = '/api/alerts?symbols=' + enc + (sharesParam ? '&shares=' + encodeURIComponent(sharesParam) : '');
+    var pAlerts  = jFetch(alertsUrl);
 
-    pMA200.then(function(d){ renderMA200(tc.panels.ma200, d); });
-    pPE   .then(function(d){ renderPE(tc.panels.pe, d); });
-    pRev  .then(function(d){ setupRevenuePanel(tc.panels.revenue, q, d); });
+    pMA200  .then(function(d){ renderMA200(tc.panels.ma200, d); });
+    pPE     .then(function(d){ renderPE(tc.panels.pe, d); });
+    pRev    .then(function(d){ setupRevenuePanel(tc.panels.revenue, q, d); });
+    pAlerts .then(function(d){ renderAlerts(tc.panels.alerts, d); });
 
     /* analysis tab needs all 5 */
     Promise.all([pMA200, pPE, pRev, pGM, pFund]).then(function(res) {
@@ -2373,10 +2469,10 @@
   .text-3xl { font-size: 1.4rem !important; }
   .text-xl  { font-size: 1rem  !important; }
 
-  /* insight tabs — fit 4 labels */
+  /* insight tabs — fit 5 labels */
   #pp-insight-tabwrap button {
-    font-size: 10px !important;
-    padding: 9px 3px !important;
+    font-size: 9px !important;
+    padding: 9px 2px !important;
   }
 
   /* ▲▼ bigger touch targets */
