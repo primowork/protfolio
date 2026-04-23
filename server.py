@@ -229,10 +229,20 @@ async def get_revenue(symbols: str = "", period: str = "annual"):
             if income is None or income.empty:
                 return sym, None
             rev_row = None
+            # Prefer exact "Total Revenue" first, then "Operating Revenue",
+            # then any row containing "Revenue" that is NOT a cost/expense row.
             for idx in income.index:
-                if 'Revenue' in str(idx):
-                    rev_row = income.loc[idx]
-                    break
+                if str(idx).strip() == "Total Revenue":
+                    rev_row = income.loc[idx]; break
+            if rev_row is None:
+                for idx in income.index:
+                    if str(idx).strip() == "Operating Revenue":
+                        rev_row = income.loc[idx]; break
+            if rev_row is None:
+                for idx in income.index:
+                    s = str(idx)
+                    if "Revenue" in s and "Cost" not in s and "Expense" not in s:
+                        rev_row = income.loc[idx]; break
             if rev_row is None or rev_row.dropna().empty:
                 return sym, None
             rev_row = rev_row.dropna().sort_index(ascending=False)
@@ -309,19 +319,58 @@ async def get_fundamentals(symbols: str = ""):
 
     def fetch_one(sym):
         try:
-            info = yf.Ticker(sym).info
+            t      = yf.Ticker(sym)
+            info   = t.info
             result = {}
             fcf    = info.get("freeCashflow")
             mktcap = info.get("marketCap")
-            debt   = info.get("totalDebt")
-            ebitda = info.get("ebitda")
             roe    = info.get("returnOnEquity")
             if fcf and mktcap and mktcap > 0:
                 result["fcfYield"] = round(fcf / mktcap * 100, 1)
-            if debt is not None and ebitda and ebitda > 0:
-                result["debtEbitda"] = round(debt / ebitda, 1)
             if roe is not None:
                 result["roe"] = round(roe * 100, 1)
+
+            # Debt/EBITDA — try info first, then balance sheet + income stmt
+            debt   = info.get("totalDebt") or info.get("longTermDebt")
+            ebitda = info.get("ebitda") or info.get("EBITDA")
+            if (debt is None or not ebitda or ebitda <= 0):
+                try:
+                    import pandas as pd
+                    bs  = t.balance_sheet
+                    inc = t.income_stmt
+                    if debt is None and not bs.empty:
+                        for idx in bs.index:
+                            s = str(idx)
+                            if s in ("Total Debt", "Long Term Debt", "Net Debt"):
+                                v = bs.iloc[:, 0].get(idx)
+                                if v is not None and not pd.isna(v):
+                                    debt = float(v); break
+                    if (not ebitda or ebitda <= 0) and not inc.empty:
+                        for idx in inc.index:
+                            s = str(idx)
+                            if s == "EBITDA":
+                                v = inc.iloc[:, 0].get(idx)
+                                if v is not None and not pd.isna(v):
+                                    ebitda = float(v); break
+                        if not ebitda or ebitda <= 0:
+                            # compute: EBIT + D&A
+                            ebit, da = None, None
+                            for idx in inc.index:
+                                s = str(idx)
+                                if s in ("Operating Income", "EBIT"):
+                                    v = inc.iloc[:, 0].get(idx)
+                                    if v is not None and not pd.isna(v): ebit = float(v)
+                                if "Depreciation" in s:
+                                    v = inc.iloc[:, 0].get(idx)
+                                    if v is not None and not pd.isna(v): da = float(v)
+                            if ebit is not None and da is not None:
+                                ebitda = ebit + abs(da)
+                except Exception as fe:
+                    logging.debug(f"Fundamentals fallback {sym}: {fe}")
+
+            if debt is not None and ebitda and ebitda > 0:
+                result["debtEbitda"] = round(debt / ebitda, 1)
+
             if result:
                 return sym, result
         except Exception as e:
@@ -484,26 +533,86 @@ def _check_price_move(sym: str, fi) -> list:
         return []
 
 
-def _check_ma200_cross(sym: str, fi) -> list:
-    """Alert when price crosses the 200-day moving average."""
+def _check_ma200_cross(sym: str) -> list:
+    """Alert when price crossed the 200-day MA at any point in the last 7 trading days."""
     try:
-        price = fi.last_price
-        prev  = fi.previous_close
-        ma200 = getattr(fi, "two_hundred_day_average", None)
-        if not price or not prev or not ma200 or ma200 == 0:
+        hist = yf.download(sym, period="1y", auto_adjust=True, progress=False, threads=False)
+        if hist.empty:
             return []
-        was_above = prev  >= ma200
-        now_above = price >= ma200
-        if was_above == now_above:
+        closes = hist["Close"].squeeze().dropna()
+        if len(closes) < 205:
             return []
-        direction = "up" if now_above else "down"
-        side      = "מעל" if now_above else "מתחת ל"
-        return [{"symbol": sym, "type": "ma200_cross", "severity": "medium",
-                 "title": "חציית ממוצע 200 יומי",
-                 "message": f"{sym} חצתה {side}ממוצע הנע 200 יום (MA200: ${ma200:.2f})",
-                 "direction": direction}]
+        ma200 = closes.rolling(200).mean()
+
+        # Scan last 8 rows → up to 7 possible crossings
+        window_c   = closes.iloc[-8:]
+        window_m   = ma200.iloc[-8:]
+        last_cross = None                     # direction of most-recent crossing
+
+        for i in range(1, len(window_c)):
+            ma_prev = float(window_m.iloc[i - 1])
+            ma_curr = float(window_m.iloc[i])
+            if ma_prev == 0 or ma_curr == 0:
+                continue
+            was_above = float(window_c.iloc[i - 1]) >= ma_prev
+            now_above = float(window_c.iloc[i])     >= ma_curr
+            if was_above != now_above:
+                last_cross = "up" if now_above else "down"
+
+        if last_cross is None:
+            return []
+
+        price   = float(closes.iloc[-1])
+        ma_now  = float(ma200.iloc[-1])
+        side    = "מעל" if last_cross == "up" else "מתחת ל"
+        return [{"symbol": sym, "type": "ma200_cross", "severity": "high",
+                 "title": f"חצייה ממוצע 200 יומי — {'מעל' if last_cross == 'up' else 'מתחת'}",
+                 "message": f"{sym} חצתה {side}ממוצע 200 יום בשבוע האחרון (מחיר: ${price:.2f} | MA200: ${ma_now:.2f})",
+                 "direction": last_cross}]
     except Exception as e:
         logging.debug(f"ma200_cross {sym}: {e}")
+        return []
+
+
+def _check_ma200w(sym: str) -> list:
+    """Alert when price crossed the 200-week MA in the last week."""
+    try:
+        hist = yf.download(sym, period="5y", interval="1wk",
+                           auto_adjust=True, progress=False, threads=False)
+        if hist.empty:
+            return []
+        closes = hist["Close"].squeeze().dropna()
+        if len(closes) < 205:
+            return []
+        ma200w = closes.rolling(200).mean()
+
+        # Check last 3 weekly bars → up to 2 possible crossings
+        window_c   = closes.iloc[-3:]
+        window_m   = ma200w.iloc[-3:]
+        last_cross = None
+
+        for i in range(1, len(window_c)):
+            ma_prev = float(window_m.iloc[i - 1])
+            ma_curr = float(window_m.iloc[i])
+            if ma_prev == 0 or ma_curr == 0:
+                continue
+            was_above = float(window_c.iloc[i - 1]) >= ma_prev
+            now_above = float(window_c.iloc[i])     >= ma_curr
+            if was_above != now_above:
+                last_cross = "up" if now_above else "down"
+
+        if last_cross is None:
+            return []
+
+        price    = float(closes.iloc[-1])
+        ma_now   = float(ma200w.iloc[-1])
+        side     = "מעל" if last_cross == "up" else "מתחת ל"
+        return [{"symbol": sym, "type": "ma200w_cross", "severity": "high",
+                 "title": f"חצייה ממוצע 200 שבועי — {'מעל' if last_cross == 'up' else 'מתחת'}",
+                 "message": f"{sym} חצתה {side}ממוצע 200 שבוע בשבוע האחרון (מחיר: ${price:.2f} | MA200W: ${ma_now:.2f})",
+                 "direction": last_cross}]
+    except Exception as e:
+        logging.debug(f"ma200w {sym}: {e}")
         return []
 
 
@@ -675,10 +784,11 @@ def _run_sym_checks(sym: str, shares_map: dict) -> list:
     try:
         fi = yf.Ticker(sym).fast_info
         alerts += _check_price_move(sym, fi)
-        alerts += _check_ma200_cross(sym, fi)
         alerts += _check_52w_high(sym, fi)
     except Exception as e:
         logging.warning(f"fast_info {sym}: {e}")
+    alerts += _check_ma200_cross(sym)
+    alerts += _check_ma200w(sym)
     alerts += _check_drawdown(sym)
     alerts += _check_revenue_trend(sym)
     alerts += _check_earnings(sym)
@@ -737,6 +847,202 @@ async def get_alerts(symbols: str = "", shares: str = ""):
     result = await _compute_alerts(sym_list, shares_map)
     _alerts_cache.update({"data": result, "ts": now, "key": cache_key})
     return JSONResponse(result)
+
+
+@app.get("/api/insider")
+async def get_insider(symbols: str = ""):
+    if not symbols:
+        return JSONResponse({})
+    sym_list = [s.strip().upper() for s in symbols.split(",") if s.strip()]
+    finnhub_key = os.getenv("FINNHUB_API_KEY", "")
+    six_months_ago = (datetime.utcnow() - timedelta(days=180)).strftime("%Y-%m-%d")
+    today = datetime.utcnow().strftime("%Y-%m-%d")
+
+    def fetch_finnhub(sym):
+        import urllib.request, json as _json
+        url = (f"https://finnhub.io/api/v1/stock/insider-transactions"
+               f"?symbol={sym}&from={six_months_ago}&to={today}&token={finnhub_key}")
+        with urllib.request.urlopen(url, timeout=8) as r:
+            data = _json.loads(r.read())
+        buys = [
+            {"name": tx.get("name", ""),
+             "date": tx.get("transactionDate", ""),
+             "shares": tx.get("change", 0),
+             "price": tx.get("transactionPrice", 0),
+             "value": round((tx.get("transactionPrice") or 0) * abs(tx.get("change") or 0))}
+            for tx in data.get("data", [])
+            if tx.get("transactionCode") == "P" and (tx.get("change") or 0) > 0
+        ]
+        return {"hasBuys": len(buys) > 0, "buyCount": len(buys), "buys": buys[:3], "source": "finnhub"}
+
+    def fetch_yfinance_fallback(sym):
+        t = yf.Ticker(sym)
+        txns = t.insider_transactions
+        if txns is None or (hasattr(txns, "empty") and txns.empty):
+            return {"hasBuys": False, "buyCount": 0, "buys": [], "source": "yfinance"}
+        cutoff = datetime.utcnow() - timedelta(days=180)
+        buys = []
+        for col in txns.columns:
+            pass  # just iterate rows below
+        for _, row in txns.iterrows():
+            # try every plausible date/transaction column name
+            date_val = None
+            for dc in ("Date", "Start Date", "startDate", "date"):
+                if dc in row.index and row[dc] is not None:
+                    date_val = row[dc]; break
+            trans_val = ""
+            for tc in ("Transaction", "transaction", "transactionType"):
+                if tc in row.index and row[tc] is not None:
+                    trans_val = str(row[tc]).lower(); break
+            if date_val is None:
+                continue
+            if hasattr(date_val, "to_pydatetime"):
+                date_val = date_val.to_pydatetime()
+            date_naive = date_val.replace(tzinfo=None) if getattr(date_val, "tzinfo", None) else date_val
+            if date_naive >= cutoff and ("buy" in trans_val or "purchase" in trans_val):
+                name = ""
+                for nc in ("Insider Trading", "insider", "name", "Name"):
+                    if nc in row.index and row[nc] is not None:
+                        name = str(row[nc]); break
+                shares_val = 0
+                for sc in ("Shares", "shares", "change"):
+                    if sc in row.index and row[sc] is not None:
+                        try: shares_val = int(row[sc])
+                        except: pass
+                        break
+                buys.append({"name": name, "date": date_naive.strftime("%d/%m/%Y"),
+                             "shares": shares_val, "value": 0})
+        return {"hasBuys": len(buys) > 0, "buyCount": len(buys), "buys": buys[:3], "source": "yfinance"}
+
+    def fetch_one(sym):
+        try:
+            if finnhub_key:
+                return sym, fetch_finnhub(sym)
+            return sym, fetch_yfinance_fallback(sym)
+        except Exception as e:
+            logging.warning(f"Insider {sym}: {e}")
+            try:
+                return sym, fetch_yfinance_fallback(sym)
+            except Exception as e2:
+                logging.warning(f"Insider yf fallback {sym}: {e2}")
+        return sym, None
+
+    loop = asyncio.get_event_loop()
+    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as pool:
+        tasks = [loop.run_in_executor(pool, fetch_one, s) for s in sym_list]
+        results = await asyncio.gather(*tasks)
+    return JSONResponse({sym: data for sym, data in results if data})
+
+
+@app.get("/api/growth_trend")
+async def get_growth_trend(symbols: str = ""):
+    """
+    Returns CAGR (3-year annual) and true TTM growth (last 4 quarters vs prior 4 quarters).
+    Flags deceleration when TTM growth is <70% of historical CAGR.
+    """
+    if not symbols:
+        return JSONResponse({})
+    sym_list = [s.strip().upper() for s in symbols.split(",") if s.strip()]
+
+    def _find_revenue(income):
+        # 1. exact match — "Total Revenue" is yfinance's standard revenue row
+        for idx in income.index:
+            if str(idx).strip() == "Total Revenue":
+                return income.loc[idx]
+        # 2. "Operating Revenue" fallback (used by some industries)
+        for idx in income.index:
+            if str(idx).strip() == "Operating Revenue":
+                return income.loc[idx]
+        # 3. Any "Revenue" row that is NOT "Cost Of Revenue" or similar expense row
+        for idx in income.index:
+            s = str(idx)
+            if "Revenue" in s and "Cost" not in s and "Expense" not in s:
+                return income.loc[idx]
+        return None
+
+    def fetch_one(sym):
+        try:
+            t = yf.Ticker(sym)
+
+            # ── True TTM: sum of last 4 quarterly revenues vs prior 4 ──
+            q_income = t.quarterly_income_stmt
+            ttm_growth = None
+            if q_income is not None and not q_income.empty:
+                q_rev = _find_revenue(q_income)
+                if q_rev is not None:
+                    q_vals = q_rev.dropna().sort_index(ascending=False)
+                    n = len(q_vals)
+                    if n >= 8:
+                        # Ideal: true TTM (last 4 quarters vs prior 4 quarters)
+                        ttm      = sum(float(q_vals.iloc[i]) for i in range(4))
+                        prev_ttm = sum(float(q_vals.iloc[i]) for i in range(4, 8))
+                        if prev_ttm != 0:
+                            ttm_growth = (ttm - prev_ttm) / abs(prev_ttm) * 100
+                    elif n >= 5:
+                        # Partial: compare N-quarter window to same window a year ago
+                        k = min(4, n - 4)
+                        recent = sum(float(q_vals.iloc[i]) for i in range(k))
+                        prior  = sum(float(q_vals.iloc[i]) for i in range(4, 4 + k))
+                        if prior != 0:
+                            ttm_growth = (recent - prior) / abs(prior) * 100
+                    elif n >= 4:
+                        # Fallback: YoY same-quarter (Q_latest vs Q_latest-last-year)
+                        latest = float(q_vals.iloc[0])
+                        yoy    = float(q_vals.iloc[3])
+                        if yoy != 0:
+                            ttm_growth = (latest - yoy) / abs(yoy) * 100
+
+            # ── CAGR: 3-year from annual income statement ──
+            a_income = t.income_stmt
+            cagr = None
+            if a_income is not None and not a_income.empty:
+                a_rev = _find_revenue(a_income)
+                if a_rev is not None:
+                    a_vals = a_rev.dropna().sort_index(ascending=False)
+                    a_list = [float(a_vals.iloc[i]) for i in range(min(4, len(a_vals)))]
+                    if len(a_list) >= 4 and a_list[3] > 0:
+                        cagr = ((a_list[0] / a_list[3]) ** (1.0 / 3) - 1) * 100
+                    elif len(a_list) >= 3 and a_list[2] > 0:
+                        cagr = ((a_list[0] / a_list[2]) ** (1.0 / 2) - 1) * 100
+                    elif len(a_list) >= 2 and a_list[1] > 0:
+                        cagr = ((a_list[0] / a_list[1]) - 1) * 100
+
+            # Last-resort fallback: if quarterly failed, derive TTM from annual YoY
+            if ttm_growth is None and a_income is not None and not a_income.empty:
+                a_rev = _find_revenue(a_income)
+                if a_rev is not None:
+                    a_vals = a_rev.dropna().sort_index(ascending=False)
+                    if len(a_vals) >= 2 and float(a_vals.iloc[1]) != 0:
+                        ttm_growth = (float(a_vals.iloc[0]) - float(a_vals.iloc[1])) / abs(float(a_vals.iloc[1])) * 100
+
+            if ttm_growth is None or cagr is None:
+                return sym, None
+
+            decelerating = False
+            decel_pct = None
+            if cagr <= 0:
+                # Negative 3-yr CAGR = shrinking revenue — fail unless TTM shows real reversal
+                decelerating = ttm_growth <= 5
+            elif cagr > 3:
+                decel_pct = cagr - ttm_growth
+                decelerating = ttm_growth < cagr * 0.70  # TTM < 70% of CAGR
+            # 0 < cagr <= 3: low but stable — not flagged
+
+            return sym, {
+                "cagr": round(cagr, 1),
+                "ttmGrowth": round(ttm_growth, 1),
+                "decelerating": decelerating,
+                "decelPct": round(decel_pct, 1) if decel_pct is not None else None,
+            }
+        except Exception as e:
+            logging.warning(f"GrowthTrend {sym}: {e}")
+        return sym, None
+
+    loop = asyncio.get_event_loop()
+    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as pool:
+        tasks = [loop.run_in_executor(pool, fetch_one, s) for s in sym_list]
+        results = await asyncio.gather(*tasks)
+    return JSONResponse({sym: data for sym, data in results if data})
 
 
 if __name__ == "__main__":

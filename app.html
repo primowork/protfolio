@@ -1635,6 +1635,8 @@
 
   var _insightWrap = null;
   var _fetched = false;
+  var _screenerSym = '';
+  var _screenerRes = null;
 
   function isInsightsTab() {
     var active = false;
@@ -1648,10 +1650,14 @@
   function getSymbols() {
     try {
       var s = JSON.parse(localStorage.getItem('primo_portfolio_v6') || '{}');
-      var txns = s.transactions || [];
-      var set = {};
-      txns.forEach(function(t) { var sym = t.ticker || t.symbol; if (sym) set[sym.toUpperCase()] = 1; });
-      return Object.keys(set);
+      var net = {};
+      (s.transactions || []).forEach(function(t) {
+        var sym = (t.ticker || t.symbol || '').toUpperCase();
+        if (!sym) return;
+        var sh = parseFloat(t.shares) || 0;
+        net[sym] = (net[sym] || 0) + (t.type === 'sell' ? -sh : sh);
+      });
+      return Object.keys(net).filter(function(k) { return net[k] > 0; });
     } catch(e) { return []; }
   }
 
@@ -1879,22 +1885,168 @@
   }
 
   /* ── cross-reference 5 algorithm filters ────────── */
-  function renderAnalysis(panel, ma200Data, peData, revData, gmData, fundData) {
+  /* ── Screener: render one-ticker result ──────────── */
+  function renderScreenerResult(container, sym, data) {
+    container.innerHTML = '';
+    var ma200D = data.ma200 || {}, peD = data.pe || {}, revD = data.rev || {};
+    var gmD = data.gm || {}, fundD = data.fund || {}, insD = data.insider || {}, growD = data.growth || {};
+    var p = peD[sym], r = revD[sym], g = gmD[sym], fd = fundD[sym];
+    var m = ma200D[sym], ins = insD[sym], gt = growD[sym];
+    var passes = 0, total = 0, filters = [];
+
+    if (r) {
+      total++; var p1 = r.pct > 8; if (p1) passes++;
+      filters.push({ name: '📈 צמיחה', pass: p1, val: (r.pct >= 0 ? '+' : '') + r.pct + '%' });
+    }
+    if (p) {
+      var ep = saneFwd(p) || p.trailingPE;
+      if (ep) {
+        total++;
+        var peg2 = (r && r.pct > 3) ? +(ep / r.pct).toFixed(2) : null;
+        var fcf2 = fd ? fd.fcfYield : null;
+        var p2 = peg2 ? peg2 < 2 : ep < 30; if (fcf2 && fcf2 > 3) p2 = true; if (p2) passes++;
+        filters.push({ name: '💰 תמחור', pass: p2, val: (peg2 ? 'PEG ' + peg2 : 'PE ' + fmtPE(ep)) + (fcf2 != null ? ' · FCF ' + fcf2 + '%' : '') });
+      }
+    }
+    if (g || (fd && fd.roe != null)) {
+      total++; var p3 = false, v3 = '';
+      if (g) { p3 = g.pct > 40; v3 = 'GM ' + g.pct + '%'; }
+      if (fd && fd.roe != null) { if (!g) { p3 = fd.roe > 12; v3 = 'ROE ' + fd.roe + '%'; } else { v3 += ' · ROE ' + fd.roe + '%'; if (fd.roe > 12) p3 = true; } }
+      if (p3) passes++;
+      filters.push({ name: '💎 איכות', pass: p3, val: v3 });
+    }
+    if (fd && fd.debtEbitda != null) {
+      total++; var p4 = fd.debtEbitda < 4; if (p4) passes++;
+      filters.push({ name: '🛡️ סיכון', pass: p4, val: 'D/E ' + fd.debtEbitda + 'x' });
+    } else {
+      filters.push({ name: '🛡️ סיכון', pass: null, val: 'אין נתון' });
+    }
+    if (m) {
+      total++; var p5 = !m.below || m.pct > -8; if (p5) passes++;
+      filters.push({ name: '🚀 מומנטום', pass: p5, val: (m.below ? '' : '+') + m.pct + '% MA200' });
+    }
+    if (gt) {
+      total++; var p7 = !gt.decelerating; if (p7) passes++;
+      filters.push({ name: '📉 מגמה', pass: p7, val: 'TTM ' + (gt.ttmGrowth >= 0 ? '+' : '') + gt.ttmGrowth + '%' });
+    }
+
+    if (!total) {
+      container.innerHTML = '<span style="color:#f87171;font-size:13px;">לא נמצאו נתונים עבור ' + sym + '</span>';
+      return;
+    }
+    var sc = passes >= total * 0.7 ? '#34d399' : passes >= total * 0.5 ? '#fbbf24' : '#f87171';
+    var row = document.createElement('div');
+    row.style.cssText = 'display:flex;align-items:center;gap:10px;margin-bottom:8px;flex-wrap:wrap;direction:rtl;';
+    row.innerHTML =
+      '<span style="font-size:24px;font-weight:800;color:' + sc + ';">' + passes + '/' + total + '</span>' +
+      '<span style="font-size:17px;font-weight:700;color:#e2e8f0;">' + sym + '</span>' +
+      '<span style="font-size:13px;color:' + sc + ';">' +
+        (passes >= total * 0.7 ? '✅ עובר רוב הפילטרים' : passes >= total * 0.5 ? '⚠️ חלקי' : '❌ לא עובר') + '</span>';
+    container.appendChild(row);
+    var chips = document.createElement('div');
+    chips.style.cssText = 'display:flex;flex-wrap:wrap;gap:5px;direction:rtl;';
+    filters.forEach(function(f) {
+      var c = f.pass === null ? '#475569' : f.pass ? '#34d399' : '#f87171';
+      var chip = document.createElement('span');
+      chip.style.cssText = 'padding:2px 8px;border-radius:5px;font-size:12px;font-weight:700;cursor:default;' +
+        'color:' + c + ';background:' + c + '18;border:1px solid ' + c + '44;';
+      chip.title = f.val;
+      chip.textContent = (f.pass === null ? '— ' : f.pass ? '✓ ' : '✗ ') + f.name;
+      chips.appendChild(chip);
+    });
+    container.appendChild(chips);
+    /* insider callout in screener (informational) */
+    if (ins && ins.hasBuys) {
+      var iNote = document.createElement('div');
+      iNote.style.cssText = 'margin-top:6px;font-size:12px;color:#34d399;';
+      iNote.textContent = '👔 רכישת בעלי עניין: ' + (ins.buyCount || 0) + ' קניות ב-6 חודשים אחרונים';
+      container.appendChild(iNote);
+    }
+  }
+
+  function renderAnalysis(panel, ma200Data, peData, revData, gmData, fundData, insiderData, growthData) {
     panel.innerHTML = '';
     var syms = getSymbols();
     if (!syms.length) { panel.innerHTML = '<p style="color:#94a3b8;font-size:16.2px;">אין מניות</p>'; return; }
     fundData = fundData || {};
+    insiderData = insiderData || {};
+    growthData = growthData || {};
+
+    /* ── Screener widget ───────────────────────────── */
+    (function() {
+      var sWrap = document.createElement('div');
+      sWrap.style.cssText = 'margin-bottom:14px;border:1px solid hsl(222,14%,20%);border-radius:6px;overflow:hidden;';
+
+      var sHdr = document.createElement('div');
+      sHdr.style.cssText = 'display:flex;align-items:center;gap:8px;padding:8px 12px;background:hsl(222,14%,13%);direction:rtl;';
+
+      var sLabel = document.createElement('span');
+      sLabel.style.cssText = 'font-weight:700;color:#94a3b8;font-size:14px;white-space:nowrap;';
+      sLabel.textContent = '🔍 סקרין חד פעמי';
+
+      var sInput = document.createElement('input');
+      sInput.type = 'text';
+      sInput.placeholder = 'NVDA, AAPL...';
+      sInput.style.cssText = 'background:hsl(222,14%,8%);border:1px solid hsl(222,14%,28%);color:#e2e8f0;' +
+        'padding:4px 10px;border-radius:4px;font-size:14px;width:120px;text-align:right;direction:ltr;outline:none;';
+      sInput.value = _screenerSym;
+
+      var sBtn = document.createElement('button');
+      sBtn.textContent = 'בדוק';
+      sBtn.style.cssText = 'padding:4px 12px;border-radius:4px;font-size:13px;font-weight:600;cursor:pointer;' +
+        'border:1px solid hsl(222,14%,28%);background:hsl(222,14%,20%);color:#e2e8f0;white-space:nowrap;';
+
+      sHdr.appendChild(sLabel);
+      sHdr.appendChild(sInput);
+      sHdr.appendChild(sBtn);
+      sWrap.appendChild(sHdr);
+
+      var sResult = document.createElement('div');
+      sResult.style.cssText = 'padding:10px 12px;background:hsl(222,14%,9%);direction:rtl;min-height:34px;';
+      if (_screenerRes) {
+        renderScreenerResult(sResult, _screenerSym, _screenerRes);
+      } else {
+        sResult.innerHTML = '<span style="color:#475569;font-size:13px;">הכנס טיקר ולחץ בדוק</span>';
+      }
+      sWrap.appendChild(sResult);
+      panel.appendChild(sWrap);
+
+      function doScreener() {
+        var sym = sInput.value.trim().toUpperCase();
+        if (!sym) return;
+        _screenerSym = sym;
+        _screenerRes = null;
+        sResult.innerHTML = '<span style="color:#94a3b8;font-size:13px;">טוען נתונים עבור ' + sym + '...</span>';
+        var enc = encodeURIComponent(sym);
+        function jf(u) { return fetch(u).then(function(r){return r.json();}).catch(function(){return {};}); }
+        Promise.all([
+          jf('/api/ma200?symbols='        + enc),
+          jf('/api/pe?symbols='           + enc),
+          jf('/api/revenue?symbols='      + enc),
+          jf('/api/gross_margin?symbols=' + enc),
+          jf('/api/fundamentals?symbols=' + enc),
+          jf('/api/insider?symbols='      + enc),
+          jf('/api/growth_trend?symbols=' + enc)
+        ]).then(function(res) {
+          _screenerRes = { ma200: res[0], pe: res[1], rev: res[2], gm: res[3], fund: res[4], insider: res[5], growth: res[6] };
+          renderScreenerResult(sResult, sym, _screenerRes);
+        });
+      }
+      sBtn.addEventListener('click', doScreener);
+      sInput.addEventListener('keydown', function(e) { if (e.key === 'Enter') doScreener(); });
+    })();
 
     /* timestamp */
     var ts = document.createElement('p');
     ts.style.cssText = 'font-size:13.5px;color:#475569;margin-bottom:12px;direction:ltr;text-align:left;';
     ts.textContent = 'עדכון: ' + new Date().toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'}) +
-                     ' | הצלבה עם 5 פילטרי האלגוריתם';
+                     ' | הצלבה עם 6 פילטרי האלגוריתם';
     panel.appendChild(ts);
 
     /* per-stock pass counter */
     var scores = {};
-    syms.forEach(function(s) { scores[s] = { passes: 0, total: 0 }; });
+    var FILTER_NAMES = ['📈 צמיחה','💰 תמחור','💎 איכות','🛡️ סיכון','🚀 מומנטום','📉 מגמה'];
+    syms.forEach(function(s) { scores[s] = { passes: 0, total: 0, filters: [null,null,null,null,null,null] }; });
 
     /* ── build one filter section ──────────────────── */
     function makeFilter(num, heTitle, enThreshold, purpose, icon, stocks) {
@@ -1934,6 +2086,7 @@
           if (scores[item.sym]) {
             scores[item.sym].total++;
             if (item.pass) scores[item.sym].passes++;
+            scores[item.sym].filters[num - 1] = { pass: item.pass, val: item.val };
           }
         });
       }
@@ -1990,9 +2143,201 @@
     /* ── Filter 5: Momentum — MA200 ──────────────── */
     var f5 = syms.map(function(s) {
       var m = ma200Data[s]; if (!m) return null;
-      return { sym: s, pass: !m.below || m.pct > -20, val: (m.below ? '' : '+') + m.pct + '% vs MA200' };
+      return { sym: s, pass: !m.below || m.pct > -8, val: (m.below ? '' : '+') + m.pct + '% vs MA200' };
     }).filter(Boolean).sort(function(a,b){ return b.pass-a.pass; });
-    panel.appendChild(makeFilter(5,'מומנטום','Not below MA200 by > 20%','כיוון השוק — האם המניה נסחרת מעל ממוצע 200 יומי?','🚀',f5));
+    panel.appendChild(makeFilter(5,'מומנטום','Not below MA200 by > 8%','כיוון השוק — האם המניה נסחרת מעל ממוצע 200 יומי?','🚀',f5));
+
+    /* ── Insider callout (not scored — rare event) ── */
+    var insiderBuyers = syms.filter(function(s) {
+      var d = insiderData[s]; return d && d.hasBuys === true;
+    });
+    if (insiderBuyers.length) {
+      var insBox = document.createElement('div');
+      insBox.style.cssText = 'margin-bottom:10px;border:1px solid #34d39944;border-radius:6px;' +
+        'padding:8px 12px;background:#052e1640;direction:rtl;display:flex;align-items:center;gap:8px;flex-wrap:wrap;';
+      insBox.innerHTML = '<span style="font-size:14px;font-weight:700;color:#34d399;">👔 רכישת בעלי עניין:</span>';
+      insiderBuyers.forEach(function(s) {
+        var cnt = (insiderData[s].buyCount || 0);
+        var chip = document.createElement('span');
+        chip.style.cssText = 'font-size:13px;font-weight:700;color:#34d399;background:#34d39918;' +
+          'border:1px solid #34d39944;border-radius:4px;padding:1px 8px;';
+        chip.textContent = s + ' (' + cnt + ' קניות 6m)';
+        insBox.appendChild(chip);
+      });
+      panel.appendChild(insBox);
+    }
+
+    /* ── Filter 6→7 renumbered: Growth Trend ─────── */
+    var f7 = syms.map(function(s) {
+      var d = growthData[s]; if (!d) return null;
+      var pass = !d.decelerating;
+      var val = 'TTM ' + (d.ttmGrowth >= 0 ? '+' : '') + d.ttmGrowth + '% | CAGR ' + (d.cagr >= 0 ? '+' : '') + d.cagr + '%';
+      return { sym: s, pass: pass, val: val };
+    }).filter(Boolean).sort(function(a,b){ return b.pass-a.pass; });
+    if (f7.length) panel.appendChild(makeFilter(6,'מגמת צמיחה','TTM Revenue ≥ 70% of 3yr CAGR','האצה/האטה — האם הצמיחה (4 רבעונים אחרונים vs שנה קודמת) האיצה או האטה?','📉',f7));
+
+    /* ── Multiple Compression Risk ──────────────── */
+    (function() {
+      var PE_FLOOR = 15;
+      var MIN_CAGR = 5;
+
+      var mcRows = [];
+      syms.forEach(function(s) {
+        var p = peData[s];
+        var g = growthData[s];
+        if (!p || !g) return;
+        var pe = p.trailingPE || p.forwardPE;
+        if (!pe || pe <= 0) return;
+        mcRows.push({
+          s: s, pe: pe,
+          cagr: (typeof g.cagr === 'number') ? g.cagr : null,
+          ttm:  (typeof g.ttmGrowth === 'number') ? g.ttmGrowth : null
+        });
+      });
+
+      if (!mcRows.length) return;
+
+      mcRows.forEach(function(r) {
+        if (r.cagr === null || r.ttm === null || r.cagr < 0 || r.ttm < 0) {
+          r.status = 'na_neg'; return;
+        }
+        if (r.cagr < MIN_CAGR) {
+          r.status = 'na_low'; return;
+        }
+        if (r.ttm >= r.cagr) {
+          r.status = 'upside'; r.peg = r.pe / r.cagr; return;
+        }
+        r.peg = r.pe / r.cagr;
+        var rawImplied = r.peg * r.ttm;
+        r.impliedPE = Math.max(rawImplied, PE_FLOOR);
+        r.impact = ((r.impliedPE / r.pe) - 1) * 100;
+        r.status = r.impact <= -40 ? 'high' : r.impact <= -20 ? 'medium' : 'mild';
+      });
+
+      var order = { high: 0, medium: 1, mild: 2, upside: 3, na_low: 4, na_neg: 5 };
+      mcRows.sort(function(a,b){
+        var da = order[a.status], db = order[b.status];
+        if (da !== db) return da - db;
+        if (a.impact != null && b.impact != null) return a.impact - b.impact;
+        return 0;
+      });
+
+      var COLOR = { high: '#f87171', medium: '#fb923c', mild: '#fbbf24', upside: '#34d399', na: '#64748b' };
+      var MC_KEY = 'pp_mc_expanded';
+      var expanded = false;
+      try { expanded = localStorage.getItem(MC_KEY) === '1'; } catch(e) {}
+
+      var wrap = document.createElement('div');
+      wrap.style.cssText = 'margin-top:16px;border:1px solid hsl(222,14%,20%);border-radius:6px;overflow:hidden;';
+
+      /* ── header with toggle button ── */
+      var hdr = document.createElement('div');
+      hdr.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:7px 12px;background:hsl(222,14%,13%);direction:rtl;';
+      hdr.innerHTML =
+        '<div style="display:flex;align-items:center;gap:6px;">' +
+          '<span style="font-size:15px;font-weight:700;color:#e2e8f0;">🗜️ סיכון כיווץ מכפילים</span>' +
+        '</div>' +
+        '<span style="font-size:12px;color:#475569;direction:ltr;font-family:monospace;">PEG × TTM = implied PE (floor 15)</span>';
+
+      var toggleBtn = document.createElement('button');
+      toggleBtn.style.cssText = 'margin-right:8px;padding:3px 10px;border-radius:4px;font-size:13px;font-weight:600;cursor:pointer;border:1px solid hsl(222,14%,28%);background:none;color:#64748b;white-space:nowrap;';
+      toggleBtn.textContent = expanded ? 'כווץ ▲' : 'הרחב ▼';
+      hdr.insertBefore(toggleBtn, hdr.firstChild);
+      wrap.appendChild(hdr);
+
+      var desc = document.createElement('div');
+      desc.style.cssText = 'padding:4px 12px;background:hsl(222,14%,10%);font-size:13px;color:#64748b;direction:rtl;border-top:1px solid hsl(222,14%,17%);';
+      desc.textContent = '⟶ אם הצמיחה האטה, השוק מכווץ את המכפיל לפי אותו PEG — מה ההשפעה על מחיר המניה?';
+      wrap.appendChild(desc);
+
+      /* ── compact chip row (always visible) ── */
+      var chipRow = document.createElement('div');
+      chipRow.style.cssText = 'padding:8px 12px;display:flex;flex-wrap:wrap;gap:5px;direction:rtl;background:hsl(222,14%,10%);border-top:1px solid hsl(222,14%,17%);';
+      mcRows.forEach(function(r) {
+        var chip = document.createElement('span');
+        var col, label;
+        if      (r.status === 'na_neg') { col = '#f87171'; label = r.s + ' 🚨'; }
+        else if (r.status === 'na_low') { col = '#fbbf24'; label = r.s + ' ⚠️'; }
+        else if (r.status === 'upside') { col = '#34d399'; label = r.s + ' ↑';  }
+        else { col = COLOR[r.status]; label = r.s + ' ' + r.impact.toFixed(0) + '%'; }
+        chip.style.cssText = 'padding:2px 8px;border-radius:5px;font-size:13px;font-weight:700;color:' + col +
+          ';background:' + col + '18;border:1px solid ' + col + '44;';
+        chip.textContent = label;
+        chipRow.appendChild(chip);
+      });
+      wrap.appendChild(chipRow);
+
+      /* ── expanded detail rows (hidden by default) ── */
+      var expandSection = document.createElement('div');
+      expandSection.style.display = expanded ? 'block' : 'none';
+
+      mcRows.forEach(function(r) {
+        var row = document.createElement('div');
+        row.style.cssText = 'display:grid;grid-template-columns:60px 1fr auto;align-items:center;gap:8px;padding:7px 12px;border-top:1px solid hsl(222,14%,15%);direction:rtl;';
+
+        var symCol = document.createElement('span');
+        symCol.style.cssText = 'font-weight:700;font-size:14px;color:#e2e8f0;';
+        symCol.textContent = r.s;
+
+        var mid  = document.createElement('div');
+        mid.style.cssText = 'font-size:12.5px;color:#94a3b8;line-height:1.5;';
+
+        var badge = document.createElement('div');
+        badge.style.cssText = 'text-align:left;min-width:90px;';
+
+        if (r.status === 'na_neg') {
+          mid.innerHTML = 'PE <b style="color:#e2e8f0">' + r.pe.toFixed(1) + '</b> · ' +
+                          'CAGR <b style="color:#f87171">' + (r.cagr==null?'—':(r.cagr>=0?'+':'')+r.cagr.toFixed(1)+'%') + '</b> · ' +
+                          'TTM <b style="color:#f87171">' + (r.ttm==null?'—':(r.ttm>=0?'+':'')+r.ttm.toFixed(1)+'%') + '</b>';
+          badge.innerHTML = '<div style="font-size:13px;font-weight:700;color:#f87171;">🚨 סכנה</div>' +
+                            '<div style="font-size:10px;color:#f87171;opacity:.9;line-height:1.35;">התכווצות הכנסות</div>';
+          row.style.background = 'hsl(0,40%,10%)';
+        } else if (r.status === 'na_low') {
+          mid.innerHTML = 'PE <b style="color:#e2e8f0">' + r.pe.toFixed(1) + '</b> · ' +
+                          'CAGR <b style="color:#fbbf24">+' + r.cagr.toFixed(1) + '%</b> · ' +
+                          'TTM <b style="color:#fbbf24">' + (r.ttm>=0?'+':'') + r.ttm.toFixed(1) + '%</b>';
+          badge.innerHTML = '<div style="font-size:13px;font-weight:700;color:#fbbf24;">⚠️ אזהרה</div>' +
+                            '<div style="font-size:10px;color:#fbbf24;opacity:.9;line-height:1.35;">קיפאון בצמיחה</div>';
+          row.style.background = 'hsl(38,40%,8%)';
+        } else if (r.status === 'upside') {
+          mid.innerHTML = 'PE <b style="color:#e2e8f0">' + r.pe.toFixed(1) + '</b> · ' +
+                          'CAGR <b style="color:#67e8f9">+' + r.cagr.toFixed(1) + '%</b> · ' +
+                          'TTM <b style="color:' + COLOR.upside + '">+' + r.ttm.toFixed(1) + '%</b> · ' +
+                          'PEG <b style="color:#a78bfa">' + r.peg.toFixed(2) + '</b>';
+          badge.innerHTML = '<div style="font-size:12px;font-weight:700;color:' + COLOR.upside + ';">האצה ↑</div>' +
+                            '<div style="font-size:10.5px;color:' + COLOR.upside + ';opacity:.8;">צפי להתרחבות מכפילים</div>';
+        } else {
+          var col = COLOR[r.status];
+          mid.innerHTML =
+            'PE <b style="color:#e2e8f0">' + r.pe.toFixed(1) + '</b> · ' +
+            'CAGR <b style="color:#67e8f9">+' + r.cagr.toFixed(1) + '%</b> · ' +
+            'TTM <b style="color:#fb923c">' + (r.ttm>=0?'+':'') + r.ttm.toFixed(1) + '%</b> · ' +
+            'PEG <b style="color:#a78bfa">' + r.peg.toFixed(2) + '</b> · ' +
+            'PE משוער <b style="color:' + col + '">' + r.impliedPE.toFixed(1) + '</b>';
+          var label = r.status === 'high' ? '⚠ סיכון גבוה' :
+                      r.status === 'medium' ? '⚠ אזהרה' : 'ℹ סיכון קל';
+          badge.innerHTML =
+            '<div style="font-size:13px;font-weight:700;color:' + col + ';">' + r.impact.toFixed(1) + '%</div>' +
+            '<div style="font-size:10.5px;color:' + col + ';opacity:.8;">' + label + '</div>';
+        }
+
+        row.appendChild(symCol);
+        row.appendChild(mid);
+        row.appendChild(badge);
+        expandSection.appendChild(row);
+      });
+
+      wrap.appendChild(expandSection);
+
+      toggleBtn.addEventListener('click', function() {
+        expanded = !expanded;
+        expandSection.style.display = expanded ? 'block' : 'none';
+        toggleBtn.textContent = expanded ? 'כווץ ▲' : 'הרחב ▼';
+        try { localStorage.setItem(MC_KEY, expanded ? '1' : '0'); } catch(e) {}
+      });
+
+      panel.appendChild(wrap);
+    })();
 
     /* ── Summary scoreboard ──────────────────────── */
     var ranked = syms.filter(function(s){ return scores[s] && scores[s].total > 0; })
@@ -2008,15 +2353,43 @@
         var sc = scores[s];
         var c = sc.passes >= 4 ? '#34d399' : sc.passes >= 3 ? '#fbbf24' : sc.passes >= 2 ? '#fb923c' : '#f87171';
         var pct = sc.total > 0 ? Math.round(sc.passes / sc.total * 100) : 0;
+
+        var rowWrap = document.createElement('div');
+        rowWrap.style.cssText = 'border-bottom:1px solid hsl(222,14%,16%);';
+
         var row = document.createElement('div');
-        row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid hsl(222,14%,16%);direction:rtl;';
+        row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:5px 0;cursor:pointer;direction:rtl;';
         row.innerHTML =
           '<a href="https://www.tradingview.com/chart/?symbol=' + s + '" target="_blank" rel="noopener noreferrer"' +
-          ' style="font-weight:700;font-size:15px;color:#e2e8f0;text-decoration:none;min-width:55px;">' + s + '</a>' +
+          ' style="font-weight:700;font-size:15px;color:#e2e8f0;text-decoration:none;min-width:55px;" onclick="event.stopPropagation()">' + s + '</a>' +
           '<div style="flex:1;background:hsl(222,14%,18%);border-radius:3px;height:7px;overflow:hidden;">' +
           '<div style="width:' + pct + '%;height:100%;background:' + c + ';border-radius:3px;"></div></div>' +
-          '<span style="font-size:14px;font-weight:700;color:' + c + ';min-width:36px;text-align:left;">' + sc.passes + '/' + sc.total + '</span>';
-        panel.appendChild(row);
+          '<span style="font-size:14px;font-weight:700;color:' + c + ';min-width:36px;text-align:left;">' + sc.passes + '/' + sc.total + '</span>' +
+          '<span style="font-size:11px;color:#475569;">▼</span>';
+        rowWrap.appendChild(row);
+
+        /* detail row — hidden by default */
+        var detail = document.createElement('div');
+        detail.style.cssText = 'display:none;padding:6px 4px 8px;display:none;flex-wrap:wrap;gap:5px;direction:rtl;background:hsl(222,14%,8%);';
+        sc.filters.forEach(function(f, i) {
+          var fc = !f ? '#334155' : f.pass ? '#34d399' : '#f87171';
+          var chip = document.createElement('span');
+          chip.style.cssText = 'padding:2px 8px;border-radius:5px;font-size:12px;font-weight:700;' +
+            'color:' + fc + ';background:' + fc + '18;border:1px solid ' + fc + '33;';
+          chip.title = f ? f.val : 'אין נתון';
+          chip.textContent = (!f ? '— ' : f.pass ? '✓ ' : '✗ ') + FILTER_NAMES[i];
+          detail.appendChild(chip);
+        });
+        rowWrap.appendChild(detail);
+
+        var open = false;
+        row.addEventListener('click', function() {
+          open = !open;
+          detail.style.display = open ? 'flex' : 'none';
+          row.querySelector('span:last-child').textContent = open ? '▲' : '▼';
+        });
+
+        panel.appendChild(rowWrap);
       });
     }
   }
@@ -2105,19 +2478,21 @@
       return fetch(url).then(function(r){return r.json();}).catch(function(){return {};});
     }
 
-    var pMA200 = jFetch('/api/ma200?symbols='        + enc);
-    var pPE    = jFetch('/api/pe?symbols='           + enc);
-    var pRev   = jFetch('/api/revenue?symbols='      + enc);
-    var pGM    = jFetch('/api/gross_margin?symbols=' + enc);
-    var pFund  = jFetch('/api/fundamentals?symbols=' + enc);
+    var pMA200   = jFetch('/api/ma200?symbols='        + enc);
+    var pPE      = jFetch('/api/pe?symbols='           + enc);
+    var pRev     = jFetch('/api/revenue?symbols='      + enc);
+    var pGM      = jFetch('/api/gross_margin?symbols=' + enc);
+    var pFund    = jFetch('/api/fundamentals?symbols=' + enc);
+    var pInsider = jFetch('/api/insider?symbols='      + enc);
+    var pGrowth  = jFetch('/api/growth_trend?symbols=' + enc);
 
     pMA200.then(function(d){ renderMA200(tc.panels.ma200, d); });
     pPE   .then(function(d){ renderPE(tc.panels.pe, d); });
     pRev  .then(function(d){ setupRevenuePanel(tc.panels.revenue, q, d); });
 
-    /* analysis tab needs all 5 */
-    Promise.all([pMA200, pPE, pRev, pGM, pFund]).then(function(res) {
-      renderAnalysis(tc.panels.analysis, res[0], res[1], res[2], res[3], res[4]);
+    /* analysis tab needs all 7 */
+    Promise.all([pMA200, pPE, pRev, pGM, pFund, pInsider, pGrowth]).then(function(res) {
+      renderAnalysis(tc.panels.analysis, res[0], res[1], res[2], res[3], res[4], res[5], res[6]);
     });
   }
 
@@ -3517,7 +3892,7 @@
     position: fixed;
     top: 0; left: 0; right: 0; bottom: 0;
     background: hsl(222,20%,6%);
-    z-index: 30;
+    z-index: 10000;
     overflow-y: auto;
     direction: rtl;
   }
@@ -3535,15 +3910,23 @@
     transition: background .12s;
   }
   .pp-alc:hover { background: hsl(222,14%,12%); }
-  .pp-alc.sev-high   { border-right-color: #f87171; }
-  .pp-alc.sev-medium { border-right-color: #fb923c; }
-  .pp-alc.sev-low    { border-right-color: #60a5fa; }
+  .pp-alc.dir-up      { border-right-color: #34d399; }
+  .pp-alc.dir-down    { border-right-color: #f87171; }
+  .pp-alc.dir-neutral { border-right-color: #64748b; }
   .pp-alc-top   { display:flex;align-items:center;justify-content:space-between;margin-bottom:3px; }
   .pp-alc-left  { display:flex;align-items:center;gap:7px; }
-  .pp-alc-sym   { font-weight:700;font-size:16.2px;color:#e2e8f0; }
+  .pp-alc-sym   { font-weight:700;font-size:16.2px;color:#00d4ff;text-decoration:none;transition:color .15s; }
+  .pp-alc-sym:hover { color:#67e8f9; text-decoration:underline; }
   .pp-alc-title { font-weight:700;font-size:14.8px; }
   .pp-alc-badge { font-size:11px;font-weight:700;padding:1px 7px;border-radius:3px;white-space:nowrap; }
   .pp-alc-msg   { font-size:13.5px;color:#94a3b8;line-height:1.45; }
+
+  /* new/unread blink */
+  @keyframes pp-alc-pulse {
+    0%, 100% { opacity: 1; }
+    50%       { opacity: 0.45; }
+  }
+  .pp-alc.pp-alc-new { animation: pp-alc-pulse 1.6s ease-in-out infinite; cursor: pointer; }
 
   /* nav button */
   #pp-alerts-navbtn {
@@ -3593,13 +3976,69 @@
   var _loaded     = false;
   var _refreshTmr = null;
 
-  var SEV_COLOR = { high: '#f87171', medium: '#fb923c', low: '#60a5fa' };
-  var SEV_HE    = { high: 'גבוה',    medium: 'בינוני',  low: 'נמוך'   };
-  var TYPE_ICON = {
-    price_move: '📈', ma200_cross: '📉', drawdown: '⬇️',
-    '52w_high': '🏆', revenue_trend: '📊', earnings: '📅',
-    concentration: '⚖️'
+  var SEV_COLOR  = { high: '#f87171', medium: '#fb923c', low: '#60a5fa' };
+  var SEV_HE     = { high: 'גבוה',    medium: 'בינוני',  low: 'נמוך'   };
+  var DIR_COLOR  = { up: '#34d399', down: '#f87171', neutral: '#64748b' };
+  var TYPE_ICON  = {
+    price_move: '📈', ma200_cross: '📉', ma200w_cross: '🔻',
+    drawdown: '⬇️', '52w_high': '🏆', revenue_trend: '📊',
+    earnings: '📅', concentration: '⚖️'
   };
+  var HIST_KEY    = 'pp_alert_hist_v1';
+  var ONE_HOUR_MS = 3600000;
+
+  /* ── history helpers ─────────────────────────────── */
+  function alertId(a) { return (a.symbol || '') + '|' + (a.type || ''); }
+
+  function loadHistory() {
+    try { return JSON.parse(localStorage.getItem(HIST_KEY) || '{}'); } catch(e) { return {}; }
+  }
+  function saveHistory(h) {
+    try { localStorage.setItem(HIST_KEY, JSON.stringify(h)); } catch(e) {}
+  }
+
+  function startOfDay(ts) {
+    var d = new Date(ts); d.setHours(0,0,0,0); return d.getTime();
+  }
+  function startOfWeek(ts) {
+    var d = new Date(ts); d.setHours(0,0,0,0); d.setDate(d.getDate() - d.getDay()); return d.getTime();
+  }
+
+  function mergeAlerts(freshAlerts) {
+    var now  = Date.now();
+    var hist = loadHistory();
+    var expireThreshold = startOfWeek(now) - 7 * 86400000;
+    freshAlerts.forEach(function(a) {
+      var id = alertId(a);
+      if (!hist[id]) hist[id] = { firstSeen: now, alert: a };
+      else           hist[id].alert = a;
+    });
+    Object.keys(hist).forEach(function(id) {
+      if (hist[id].firstSeen < expireThreshold) delete hist[id];
+    });
+    saveHistory(hist);
+    return hist;
+  }
+
+  function bucketize(hist) {
+    var now            = Date.now();
+    var todayStart     = startOfDay(now);
+    var yesterdayStart = todayStart - 86400000;
+    var thisWeekStart  = startOfWeek(now);
+    var lastWeekStart  = thisWeekStart - 7 * 86400000;
+    var bkts = { today: [], yesterday: [], thisWeek: [], lastWeek: [] };
+    Object.keys(hist).forEach(function(id) {
+      var e = hist[id], fs = e.firstSeen;
+      if      (fs >= todayStart)     bkts.today.push(e);
+      else if (fs >= yesterdayStart) bkts.yesterday.push(e);
+      else if (fs >= thisWeekStart)  bkts.thisWeek.push(e);
+      else if (fs >= lastWeekStart)  bkts.lastWeek.push(e);
+    });
+    ['today','yesterday','thisWeek','lastWeek'].forEach(function(k) {
+      bkts[k].sort(function(a,b) { return b.firstSeen - a.firstSeen; });
+    });
+    return bkts;
+  }
 
   /* ── read portfolio from localStorage ────────────── */
   function getState() {
@@ -3636,20 +4075,39 @@
   }
 
   /* ── render one card ─────────────────────────────── */
-  function makeCard(alert) {
-    var color = SEV_COLOR[alert.severity] || '#94a3b8';
-    var div   = document.createElement('div');
-    div.className = 'pp-alc sev-' + (alert.severity || 'low');
+  function makeCard(alert, firstSeen) {
+    var color    = SEV_COLOR[alert.severity] || '#94a3b8';
+    var dirColor = DIR_COLOR[alert.direction] || '#64748b';
+    var isNew    = (Date.now() - firstSeen) < ONE_HOUR_MS;
+
+    /* direction-sensitive icon for price_move */
+    var icon = TYPE_ICON[alert.type] || '🔔';
+    if (alert.type === 'price_move') icon = alert.direction === 'up' ? '📈' : '📉';
+
+    var div = document.createElement('div');
+    div.className = 'pp-alc dir-' + (alert.direction || 'neutral') + (isNew ? ' pp-alc-new' : '');
+
+    /* click → dismiss flash immediately */
+    div.addEventListener('click', function(e) {
+      if (e.target.tagName === 'A') return;
+      if (div.classList.contains('pp-alc-new')) {
+        div.classList.remove('pp-alc-new');
+        div.style.animation = 'none';
+      }
+    });
 
     var top = document.createElement('div');
     top.className = 'pp-alc-top';
 
     var left = document.createElement('div');
     left.className = 'pp-alc-left';
+    var tvUrl = 'https://www.tradingview.com/chart/?symbol=' + encodeURIComponent(alert.symbol || '');
     left.innerHTML =
-      '<span style="font-size:17px">' + (TYPE_ICON[alert.type] || '🔔') + '</span>' +
-      '<span class="pp-alc-sym">'   + (alert.symbol || '') + '</span>' +
-      '<span class="pp-alc-title" style="color:' + color + '">' + (alert.title || '') + '</span>';
+      '<span style="font-size:17px">' + icon + '</span>' +
+      '<a class="pp-alc-sym" href="' + tvUrl + '" target="_blank" rel="noopener noreferrer">' +
+        (alert.symbol || '') +
+      '</a>' +
+      '<span class="pp-alc-title" style="color:' + dirColor + '">' + (alert.title || '') + '</span>';
 
     var badge = document.createElement('span');
     badge.className = 'pp-alc-badge';
@@ -3668,22 +4126,48 @@
     return div;
   }
 
-  /* ── render full list ────────────────────────────── */
+  /* ── render full list (bucketed by time) ─────────── */
   function renderList(alerts, generatedAt) {
     var list = document.getElementById(LIST_ID);
     if (!list) return;
     list.innerHTML = '';
 
-    if (!alerts || !alerts.length) {
+    var hist  = mergeAlerts(alerts || []);
+    var bkts  = bucketize(hist);
+    var GROUPS = [
+      { key: 'today',     label: 'היום'       },
+      { key: 'yesterday', label: 'אתמול'       },
+      { key: 'thisWeek',  label: 'השבוע'       },
+      { key: 'lastWeek',  label: 'שבוע שעבר'   }
+    ];
+    var total = 0;
+    GROUPS.forEach(function(g) { total += bkts[g.key].length; });
+
+    if (!total) {
       list.innerHTML =
         '<div style="text-align:center;padding:60px 20px;">' +
         '<div style="font-size:40px;margin-bottom:14px">✅</div>' +
         '<div style="color:#34d399;font-size:17px;font-weight:700">הכל תקין בפורטפוליו</div>' +
         '<div style="color:hsl(210,10%,35%);font-size:14px;margin-top:8px">אין התראות פעילות כרגע</div>' +
         '</div>';
+      updateBadge(0);
       return;
     }
-    alerts.forEach(function(a) { list.appendChild(makeCard(a)); });
+
+    var first = true;
+    GROUPS.forEach(function(g) {
+      if (!bkts[g.key].length) return;
+      var hdr = document.createElement('div');
+      hdr.style.cssText = 'font-size:11px;font-weight:700;color:#475569;letter-spacing:.07em;' +
+        'padding:10px 2px 5px;direction:rtl;' +
+        (first ? '' : 'margin-top:4px;border-top:1px solid hsl(222,14%,17%);');
+      hdr.textContent = g.label;
+      list.appendChild(hdr);
+      first = false;
+      bkts[g.key].forEach(function(e) { list.appendChild(makeCard(e.alert, e.firstSeen)); });
+    });
+
+    updateBadge(total);
 
     /* footer timestamp */
     if (generatedAt) {
@@ -3735,7 +4219,6 @@
         var alerts = data.alerts || [];
         _loaded = true;
         renderList(alerts, data.generated_at);
-        updateBadge(alerts.length);
         clearTimeout(_refreshTmr);
         _refreshTmr = setTimeout(function() { fetchAlerts(false); }, REFRESH_MS);
       })
@@ -3782,10 +4265,16 @@
         '<span style="font-weight:700;font-size:19px;color:#e2e8f0;">התראות</span>' +
         '<span id="pp-alerts-count" style="font-size:13px;color:hsl(210,10%,40%);"></span>' +
       '</div>' +
-      '<button id="pp-alerts-refresh-btn" style="background:none;border:1px solid hsl(222,14%,26%);' +
-        'color:#64748b;border-radius:4px;cursor:pointer;padding:4px 12px;font-size:13px;font-weight:600;' +
-        'transition:all .15s;" onmouseover="this.style.borderColor=\'#f87171\';this.style.color=\'#f87171\';" ' +
-        'onmouseout="this.style.borderColor=\'hsl(222,14%,26%)\';this.style.color=\'#64748b\';">↻ רענן</button>';
+      '<div style="display:flex;align-items:center;gap:8px;">' +
+        '<button id="pp-alerts-refresh-btn" style="background:none;border:1px solid hsl(222,14%,26%);' +
+          'color:#64748b;border-radius:4px;cursor:pointer;padding:4px 12px;font-size:13px;font-weight:600;' +
+          'transition:all .15s;" onmouseover="this.style.borderColor=\'#f87171\';this.style.color=\'#f87171\';" ' +
+          'onmouseout="this.style.borderColor=\'hsl(222,14%,26%)\';this.style.color=\'#64748b\';">↻ רענן</button>' +
+        '<button id="pp-alerts-close-btn" style="background:none;border:1px solid hsl(222,14%,26%);' +
+          'color:#64748b;border-radius:4px;cursor:pointer;padding:4px 10px;font-size:16px;font-weight:700;line-height:1;' +
+          'transition:all .15s;" onmouseover="this.style.borderColor=\'#94a3b8\';this.style.color=\'#e2e8f0\';" ' +
+          'onmouseout="this.style.borderColor=\'hsl(222,14%,26%)\';this.style.color=\'#64748b\';">✕</button>' +
+      '</div>';
 
     overlay.appendChild(stickyHdr);
 
@@ -3797,11 +4286,12 @@
 
     document.body.appendChild(overlay);
 
-    /* wire refresh button */
+    /* wire refresh + close buttons */
     document.getElementById('pp-alerts-refresh-btn').addEventListener('click', function() {
       _loaded = false;
       fetchAlerts(true);
     });
+    document.getElementById('pp-alerts-close-btn').addEventListener('click', hidePanel);
   }
 
   /* ── inject nav tab button ───────────────────────── */
@@ -3882,6 +4372,111 @@
     injectNavTab();
     fetchAlerts(true);
   }, 4000);
+
+})();
+</script>
+
+<script>
+/* =======================================================
+   Primo Portfolio Feature Patch v20
+   ציטוט פיננסי שבועי — Weekly Financial Quote
+   ======================================================= */
+(function () {
+  'use strict';
+
+  var HE_MONTHS = ['ינואר','פברואר','מרץ','אפריל','מאי','יוני',
+                   'יולי','אוגוסט','ספטמבר','אוקטובר','נובמבר','דצמבר'];
+
+  var QUOTES = [
+    { q: 'היה פחדן כשאחרים חמדנים, וחמדן כשאחרים פחדנים.', a: 'וורן באפט' },
+    { q: 'בטווח הקצר, השוק הוא מכונת הצבעה. בטווח הארוך, הוא מכונת שקילה.', a: 'בנג\'מין גראהם' },
+    { q: 'דע מה אתה מחזיק, ודע מדוע אתה מחזיק בו.', a: 'פיטר לינץ\'' },
+    { q: 'ארבע המילים המסוכנות ביותר בהשקעות: "הפעם זה שונה".', a: 'ג\'ון טמפלטון' },
+    { q: 'מחיר הוא מה שאתה משלם. ערך הוא מה שאתה מקבל.', a: 'וורן באפט' },
+    { q: 'אל תחפש את המחט בערמת השחת. פשוט קנה את ערמת השחת.', a: 'ג\'ון בוגל' },
+    { q: 'השוק לא מכה אותם. הם מכים את עצמם, כי למרות שיש להם שכל — הם לא יכולים לשבת בשקט.', a: 'ג\'סי ליברמור' },
+    { q: 'המשקיע החכם הוא ריאליסט שמוכר לאופטימיסטים וקונה מפסימיסטים.', a: 'בנג\'מין גראהם' },
+    { q: 'שוק המניות הוא מכשיר להעברת כסף מחסרי הסבלנות לסבלניים.', a: 'וורן באפט' },
+    { q: 'שוקי שור נולדים על פסימיות, גדלים על ספקנות, מבשילים על אופטימיות, ומתים על אופוריה.', a: 'ג\'ון טמפלטון' },
+    { q: 'טעויות ההשקעה הגדולות ביותר אינן נובעות מגורמים מידעיים, אלא מגורמים פסיכולוגיים.', a: 'הווארד מארקס' },
+    { q: 'הפוך, תמיד הפוך.', a: 'צ\'רלי מאנגר' },
+    { q: 'תקופת ההחזקה המועדפת עלינו היא לנצח.', a: 'וורן באפט' },
+    { q: 'השוק יכול להישאר לא רציונלי יותר זמן ממה שאתה יכול להישאר סולבנטי.', a: 'ג\'ון מיינארד קיינס' },
+    { q: 'חפש עסק שכל אידיוט יכול לנהל — כי במוקדם או במאוחר, איזה אידיוט כנראה ינהל אותו.', a: 'פיטר לינץ\'' },
+    { q: 'היתרון הגדול ביותר שיכול להיות למשקיע הוא אוריינטציה לטווח ארוך.', a: 'שת קלרמן' },
+    { q: 'סיכון מגיע מחוסר ידיעה מה אתה עושה.', a: 'וורן באפט' },
+    { q: 'הבעיה העיקרית של המשקיע — ואפילו האויב הגרוע ביותר שלו — הוא כנראה הוא עצמו.', a: 'בנג\'מין גראהם' },
+    { q: 'לא חשוב אם אתה צודק או טועה, אלא כמה אתה מרוויח כשאתה צודק וכמה אתה מפסיד כשאתה טועה.', a: 'ג\'ורג\' סורוס' },
+    { q: 'עסק מצוין במחיר הוגן עדיף על עסק הוגן במחיר מצוין.', a: 'צ\'רלי מאנגר' },
+    { q: 'פיזור הוא הגנה מפני בורות. הוא הגיוני מעט למי שיודע מה הוא עושה.', a: 'וורן באפט' },
+    { q: 'מי שהופך הכי הרבה אבנים מנצח במשחק.', a: 'פיטר לינץ\'' },
+    { q: 'עדיף לקנות חברה נפלאה במחיר הוגן, מאשר חברה הוגנת במחיר נפלא.', a: 'וורן באפט' },
+    { q: 'הראה לי את התמריץ ואראה לך את התוצאה.', a: 'צ\'רלי מאנגר' },
+    { q: 'כאב + רפלקציה = התקדמות.', a: 'ריי דאליו' },
+    { q: 'השוק מלא בנאיביים שאינם יודעים, ובציניים שאינם יודעים שאינם יודעים.', a: 'מלקולם פורבס' },
+  ];
+
+  function getWeekNumber(d) {
+    var date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+    var dayNum = date.getUTCDay() || 7;
+    date.setUTCDate(date.getUTCDate() + 4 - dayNum);
+    var yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
+    return Math.ceil((((date - yearStart) / 86400000) + 1) / 7);
+  }
+
+  function buildCard(quote, month) {
+    var card = document.createElement('div');
+    card.id = 'pp-weekly-quote';
+    card.style.cssText = [
+      'margin:0 0 14px 0',
+      'padding:14px 18px 12px',
+      'background:hsl(222,14%,10%)',
+      'border:1px solid hsl(222,14%,19%)',
+      'border-left:3px solid #f59e0b',
+      'border-radius:7px',
+      'direction:rtl',
+      'position:relative',
+    ].join(';');
+
+    var icon = document.createElement('span');
+    icon.style.cssText = 'position:absolute;top:12px;left:14px;font-size:20px;opacity:.35;';
+    icon.textContent = '❝';
+    card.appendChild(icon);
+
+    var text = document.createElement('p');
+    text.style.cssText = 'font-size:15px;line-height:1.65;color:#e2e8f0;margin:0 0 8px;padding-left:28px;';
+    text.textContent = quote.q;
+    card.appendChild(text);
+
+    var attr = document.createElement('p');
+    attr.style.cssText = 'font-size:12.5px;color:#f59e0b;font-weight:600;margin:0;padding-left:28px;';
+    attr.textContent = quote.a + ' · ' + month;
+    card.appendChild(attr);
+
+    return card;
+  }
+
+  function inject() {
+    if (document.getElementById('pp-weekly-quote')) return;
+    var main = document.querySelector('main');
+    if (!main) return;
+
+    var now   = new Date();
+    var week  = getWeekNumber(now);
+    var month = HE_MONTHS[now.getMonth()];
+    var quote = QUOTES[week % QUOTES.length];
+
+    var card = buildCard(quote, month);
+    main.insertBefore(card, main.firstChild);
+  }
+
+  var _deb20 = null;
+  var obs20 = new MutationObserver(function() {
+    clearTimeout(_deb20);
+    _deb20 = setTimeout(inject, 600);
+  });
+  obs20.observe(document.body, { childList: true, subtree: true });
+  setTimeout(inject, 1500);
 
 })();
 </script>
