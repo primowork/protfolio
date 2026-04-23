@@ -3517,7 +3517,7 @@
     position: fixed;
     top: 0; left: 0; right: 0; bottom: 0;
     background: hsl(222,20%,6%);
-    z-index: 30;
+    z-index: 10000;
     overflow-y: auto;
     direction: rtl;
   }
@@ -3782,10 +3782,16 @@
         '<span style="font-weight:700;font-size:19px;color:#e2e8f0;">התראות</span>' +
         '<span id="pp-alerts-count" style="font-size:13px;color:hsl(210,10%,40%);"></span>' +
       '</div>' +
-      '<button id="pp-alerts-refresh-btn" style="background:none;border:1px solid hsl(222,14%,26%);' +
-        'color:#64748b;border-radius:4px;cursor:pointer;padding:4px 12px;font-size:13px;font-weight:600;' +
-        'transition:all .15s;" onmouseover="this.style.borderColor=\'#f87171\';this.style.color=\'#f87171\';" ' +
-        'onmouseout="this.style.borderColor=\'hsl(222,14%,26%)\';this.style.color=\'#64748b\';">↻ רענן</button>';
+      '<div style="display:flex;align-items:center;gap:8px;">' +
+        '<button id="pp-alerts-refresh-btn" style="background:none;border:1px solid hsl(222,14%,26%);' +
+          'color:#64748b;border-radius:4px;cursor:pointer;padding:4px 12px;font-size:13px;font-weight:600;' +
+          'transition:all .15s;" onmouseover="this.style.borderColor=\'#f87171\';this.style.color=\'#f87171\';" ' +
+          'onmouseout="this.style.borderColor=\'hsl(222,14%,26%)\';this.style.color=\'#64748b\';">↻ רענן</button>' +
+        '<button id="pp-alerts-close-btn" style="background:none;border:1px solid hsl(222,14%,26%);' +
+          'color:#64748b;border-radius:4px;cursor:pointer;padding:4px 10px;font-size:16px;font-weight:700;line-height:1;' +
+          'transition:all .15s;" onmouseover="this.style.borderColor=\'#94a3b8\';this.style.color=\'#e2e8f0\';" ' +
+          'onmouseout="this.style.borderColor=\'hsl(222,14%,26%)\';this.style.color=\'#64748b\';">✕</button>' +
+      '</div>';
 
     overlay.appendChild(stickyHdr);
 
@@ -3797,11 +3803,12 @@
 
     document.body.appendChild(overlay);
 
-    /* wire refresh button */
+    /* wire refresh + close buttons */
     document.getElementById('pp-alerts-refresh-btn').addEventListener('click', function() {
       _loaded = false;
       fetchAlerts(true);
     });
+    document.getElementById('pp-alerts-close-btn').addEventListener('click', hidePanel);
   }
 
   /* ── inject nav tab button ───────────────────────── */
