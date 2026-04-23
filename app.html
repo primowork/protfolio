@@ -3540,10 +3540,18 @@
   .pp-alc.sev-low    { border-right-color: #60a5fa; }
   .pp-alc-top   { display:flex;align-items:center;justify-content:space-between;margin-bottom:3px; }
   .pp-alc-left  { display:flex;align-items:center;gap:7px; }
-  .pp-alc-sym   { font-weight:700;font-size:16.2px;color:#e2e8f0; }
+  .pp-alc-sym   { font-weight:700;font-size:16.2px;color:#00d4ff;text-decoration:none;transition:color .15s; }
+  .pp-alc-sym:hover { color:#67e8f9; text-decoration:underline; }
   .pp-alc-title { font-weight:700;font-size:14.8px; }
   .pp-alc-badge { font-size:11px;font-weight:700;padding:1px 7px;border-radius:3px;white-space:nowrap; }
   .pp-alc-msg   { font-size:13.5px;color:#94a3b8;line-height:1.45; }
+
+  /* new/unread blink */
+  @keyframes pp-alc-pulse {
+    0%, 100% { opacity: 1; }
+    50%       { opacity: 0.45; }
+  }
+  .pp-alc.pp-alc-new { animation: pp-alc-pulse 1.6s ease-in-out infinite; cursor: pointer; }
 
   /* nav button */
   #pp-alerts-navbtn {
@@ -3593,13 +3601,36 @@
   var _loaded     = false;
   var _refreshTmr = null;
 
-  var SEV_COLOR = { high: '#f87171', medium: '#fb923c', low: '#60a5fa' };
-  var SEV_HE    = { high: 'גבוה',    medium: 'בינוני',  low: 'נמוך'   };
-  var TYPE_ICON = {
+  var SEV_COLOR  = { high: '#f87171', medium: '#fb923c', low: '#60a5fa' };
+  var SEV_HE     = { high: 'גבוה',    medium: 'בינוני',  low: 'נמוך'   };
+  var TYPE_ICON  = {
     price_move: '📈', ma200_cross: '📉', ma200w_cross: '🔻',
     drawdown: '⬇️', '52w_high': '🏆', revenue_trend: '📊',
     earnings: '📅', concentration: '⚖️'
   };
+  var SEEN_KEY   = 'pp_alerts_seen_v1';
+
+  /* ── seen-state helpers ──────────────────────────── */
+  function alertId(a) { return (a.symbol || '') + '|' + (a.type || ''); }
+
+  function loadSeen() {
+    try {
+      var raw  = JSON.parse(localStorage.getItem(SEEN_KEY) || '{}');
+      var today = new Date().toISOString().slice(0, 10);
+      if (raw.date !== today) return {};   // new day → reset
+      return raw.ids || {};
+    } catch(e) { return {}; }
+  }
+
+  function markSeen(id) {
+    try {
+      var today = new Date().toISOString().slice(0, 10);
+      var raw   = JSON.parse(localStorage.getItem(SEEN_KEY) || '{}');
+      if (raw.date !== today) raw = { date: today, ids: {} };
+      raw.ids[id] = 1;
+      localStorage.setItem(SEEN_KEY, JSON.stringify(raw));
+    } catch(e) {}
+  }
 
   /* ── read portfolio from localStorage ────────────── */
   function getState() {
@@ -3636,19 +3667,36 @@
   }
 
   /* ── render one card ─────────────────────────────── */
-  function makeCard(alert) {
+  function makeCard(alert, seen) {
     var color = SEV_COLOR[alert.severity] || '#94a3b8';
-    var div   = document.createElement('div');
-    div.className = 'pp-alc sev-' + (alert.severity || 'low');
+    var id    = alertId(alert);
+    var isNew = !seen[id];
+
+    var div = document.createElement('div');
+    div.className = 'pp-alc sev-' + (alert.severity || 'low') + (isNew ? ' pp-alc-new' : '');
+
+    /* click anywhere on card → mark as read */
+    div.addEventListener('click', function(e) {
+      /* don't intercept the TradingView link itself */
+      if (e.target.tagName === 'A') return;
+      if (div.classList.contains('pp-alc-new')) {
+        div.classList.remove('pp-alc-new');
+        div.style.animation = 'none';
+        markSeen(id);
+      }
+    });
 
     var top = document.createElement('div');
     top.className = 'pp-alc-top';
 
     var left = document.createElement('div');
     left.className = 'pp-alc-left';
+    var tvUrl = 'https://www.tradingview.com/chart/?symbol=' + encodeURIComponent(alert.symbol || '');
     left.innerHTML =
       '<span style="font-size:17px">' + (TYPE_ICON[alert.type] || '🔔') + '</span>' +
-      '<span class="pp-alc-sym">'   + (alert.symbol || '') + '</span>' +
+      '<a class="pp-alc-sym" href="' + tvUrl + '" target="_blank" rel="noopener noreferrer">' +
+        (alert.symbol || '') +
+      '</a>' +
       '<span class="pp-alc-title" style="color:' + color + '">' + (alert.title || '') + '</span>';
 
     var badge = document.createElement('span');
@@ -3683,7 +3731,8 @@
         '</div>';
       return;
     }
-    alerts.forEach(function(a) { list.appendChild(makeCard(a)); });
+    var seen = loadSeen();
+    alerts.forEach(function(a) { list.appendChild(makeCard(a, seen)); });
 
     /* footer timestamp */
     if (generatedAt) {
