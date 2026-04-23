@@ -800,6 +800,103 @@ async def get_alerts(symbols: str = "", shares: str = ""):
     return JSONResponse(result)
 
 
+@app.get("/api/insider")
+async def get_insider(symbols: str = ""):
+    if not symbols:
+        return JSONResponse({})
+    sym_list = [s.strip().upper() for s in symbols.split(",") if s.strip()]
+
+    def fetch_one(sym):
+        try:
+            t = yf.Ticker(sym)
+            txns = t.insider_transactions
+            if txns is None or (hasattr(txns, "empty") and txns.empty):
+                return sym, {"hasBuys": False, "buyCount": 0, "buys": []}
+            six_months_ago = datetime.utcnow() - timedelta(days=180)
+            buys = []
+            for _, row in txns.iterrows():
+                date_val = row.get("Date") or row.get("Start Date") or row.get("startDate")
+                trans_val = str(row.get("Transaction") or row.get("transaction") or "").lower()
+                if date_val is None:
+                    continue
+                if hasattr(date_val, "to_pydatetime"):
+                    date_val = date_val.to_pydatetime()
+                if hasattr(date_val, "replace"):
+                    date_naive = date_val.replace(tzinfo=None) if getattr(date_val, "tzinfo", None) else date_val
+                else:
+                    continue
+                if date_naive >= six_months_ago and ("buy" in trans_val or "purchase" in trans_val):
+                    name = str(row.get("Insider Trading") or row.get("insider") or "")
+                    shares = int(row.get("Shares") or 0)
+                    value = float(row.get("Value") or 0)
+                    buys.append({"name": name, "date": date_naive.strftime("%d/%m/%Y"),
+                                 "shares": shares, "value": value})
+            return sym, {"hasBuys": len(buys) > 0, "buyCount": len(buys), "buys": buys[:3]}
+        except Exception as e:
+            logging.warning(f"Insider {sym}: {e}")
+        return sym, None
+
+    loop = asyncio.get_event_loop()
+    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as pool:
+        tasks = [loop.run_in_executor(pool, fetch_one, s) for s in sym_list]
+        results = await asyncio.gather(*tasks)
+    return JSONResponse({sym: data for sym, data in results if data})
+
+
+@app.get("/api/growth_trend")
+async def get_growth_trend(symbols: str = ""):
+    if not symbols:
+        return JSONResponse({})
+    sym_list = [s.strip().upper() for s in symbols.split(",") if s.strip()]
+
+    def fetch_one(sym):
+        try:
+            t = yf.Ticker(sym)
+            income = t.income_stmt
+            if income is None or income.empty:
+                return sym, None
+            rev_row = None
+            for idx in income.index:
+                if "Revenue" in str(idx):
+                    rev_row = income.loc[idx]
+                    break
+            if rev_row is None:
+                return sym, None
+            rev = rev_row.dropna().sort_index(ascending=False)
+            if len(rev) < 2:
+                return sym, None
+            vals = [float(rev.iloc[i]) for i in range(min(4, len(rev)))]
+            if vals[1] == 0:
+                return sym, None
+            ttm_growth = (vals[0] - vals[1]) / abs(vals[1]) * 100
+            if len(vals) >= 4 and vals[3] > 0:
+                cagr = ((vals[0] / vals[3]) ** (1.0 / 3) - 1) * 100
+            elif len(vals) >= 3 and vals[2] > 0:
+                cagr = ((vals[0] / vals[2]) ** (1.0 / 2) - 1) * 100
+            else:
+                cagr = ttm_growth
+            decelerating = False
+            decel_pct = None
+            if cagr > 3:
+                decel_pct = cagr - ttm_growth
+                decelerating = decel_pct > (cagr * 0.30)
+            return sym, {
+                "cagr": round(cagr, 1),
+                "ttmGrowth": round(ttm_growth, 1),
+                "decelerating": decelerating,
+                "decelPct": round(decel_pct, 1) if decel_pct is not None else None,
+            }
+        except Exception as e:
+            logging.warning(f"GrowthTrend {sym}: {e}")
+        return sym, None
+
+    loop = asyncio.get_event_loop()
+    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as pool:
+        tasks = [loop.run_in_executor(pool, fetch_one, s) for s in sym_list]
+        results = await asyncio.gather(*tasks)
+    return JSONResponse({sym: data for sym, data in results if data})
+
+
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8000))
     uvicorn.run("server:app", host="0.0.0.0", port=port)

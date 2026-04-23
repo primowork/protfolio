@@ -1879,17 +1879,19 @@
   }
 
   /* ── cross-reference 5 algorithm filters ────────── */
-  function renderAnalysis(panel, ma200Data, peData, revData, gmData, fundData) {
+  function renderAnalysis(panel, ma200Data, peData, revData, gmData, fundData, insiderData, growthData) {
     panel.innerHTML = '';
     var syms = getSymbols();
     if (!syms.length) { panel.innerHTML = '<p style="color:#94a3b8;font-size:16.2px;">אין מניות</p>'; return; }
     fundData = fundData || {};
+    insiderData = insiderData || {};
+    growthData = growthData || {};
 
     /* timestamp */
     var ts = document.createElement('p');
     ts.style.cssText = 'font-size:13.5px;color:#475569;margin-bottom:12px;direction:ltr;text-align:left;';
     ts.textContent = 'עדכון: ' + new Date().toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'}) +
-                     ' | הצלבה עם 5 פילטרי האלגוריתם';
+                     ' | הצלבה עם 7 פילטרי האלגוריתם';
     panel.appendChild(ts);
 
     /* per-stock pass counter */
@@ -1990,9 +1992,26 @@
     /* ── Filter 5: Momentum — MA200 ──────────────── */
     var f5 = syms.map(function(s) {
       var m = ma200Data[s]; if (!m) return null;
-      return { sym: s, pass: !m.below || m.pct > -20, val: (m.below ? '' : '+') + m.pct + '% vs MA200' };
+      return { sym: s, pass: !m.below || m.pct > -1, val: (m.below ? '' : '+') + m.pct + '% vs MA200' };
     }).filter(Boolean).sort(function(a,b){ return b.pass-a.pass; });
-    panel.appendChild(makeFilter(5,'מומנטום','Not below MA200 by > 20%','כיוון השוק — האם המניה נסחרת מעל ממוצע 200 יומי?','🚀',f5));
+    panel.appendChild(makeFilter(5,'מומנטום','Not below MA200 by > 1%','כיוון השוק — האם המניה נסחרת מעל ממוצע 200 יומי?','🚀',f5));
+
+    /* ── Filter 6: Insider Buying ────────────────── */
+    var f6 = syms.map(function(s) {
+      var d = insiderData[s]; if (!d) return null;
+      var cnt = d.buyCount || 0;
+      return { sym: s, pass: d.hasBuys === true, val: cnt + ' קניות (6m)' };
+    }).filter(Boolean).sort(function(a,b){ return b.pass-a.pass; });
+    if (f6.length) panel.appendChild(makeFilter(6,'בעלי עניין','Insider Buys in last 6m','קנייה עצמית — האם מנהלים קנו מניות בחצי השנה האחרונה?','👔',f6));
+
+    /* ── Filter 7: Growth Trend ──────────────────── */
+    var f7 = syms.map(function(s) {
+      var d = growthData[s]; if (!d) return null;
+      var pass = !d.decelerating;
+      var val = 'TTM ' + (d.ttmGrowth >= 0 ? '+' : '') + d.ttmGrowth + '% | CAGR ' + (d.cagr >= 0 ? '+' : '') + d.cagr + '%';
+      return { sym: s, pass: pass, val: val };
+    }).filter(Boolean).sort(function(a,b){ return b.pass-a.pass; });
+    if (f7.length) panel.appendChild(makeFilter(7,'מגמת צמיחה','No decel. (TTM ≥ 70% of CAGR)','האצה/האטה — האם הצמיחה האיצה או האטה לאחרונה?','📉',f7));
 
     /* ── Summary scoreboard ──────────────────────── */
     var ranked = syms.filter(function(s){ return scores[s] && scores[s].total > 0; })
@@ -2105,19 +2124,21 @@
       return fetch(url).then(function(r){return r.json();}).catch(function(){return {};});
     }
 
-    var pMA200 = jFetch('/api/ma200?symbols='        + enc);
-    var pPE    = jFetch('/api/pe?symbols='           + enc);
-    var pRev   = jFetch('/api/revenue?symbols='      + enc);
-    var pGM    = jFetch('/api/gross_margin?symbols=' + enc);
-    var pFund  = jFetch('/api/fundamentals?symbols=' + enc);
+    var pMA200   = jFetch('/api/ma200?symbols='        + enc);
+    var pPE      = jFetch('/api/pe?symbols='           + enc);
+    var pRev     = jFetch('/api/revenue?symbols='      + enc);
+    var pGM      = jFetch('/api/gross_margin?symbols=' + enc);
+    var pFund    = jFetch('/api/fundamentals?symbols=' + enc);
+    var pInsider = jFetch('/api/insider?symbols='      + enc);
+    var pGrowth  = jFetch('/api/growth_trend?symbols=' + enc);
 
     pMA200.then(function(d){ renderMA200(tc.panels.ma200, d); });
     pPE   .then(function(d){ renderPE(tc.panels.pe, d); });
     pRev  .then(function(d){ setupRevenuePanel(tc.panels.revenue, q, d); });
 
-    /* analysis tab needs all 5 */
-    Promise.all([pMA200, pPE, pRev, pGM, pFund]).then(function(res) {
-      renderAnalysis(tc.panels.analysis, res[0], res[1], res[2], res[3], res[4]);
+    /* analysis tab needs all 7 */
+    Promise.all([pMA200, pPE, pRev, pGM, pFund, pInsider, pGrowth]).then(function(res) {
+      renderAnalysis(tc.panels.analysis, res[0], res[1], res[2], res[3], res[4], res[5], res[6]);
     });
   }
 
