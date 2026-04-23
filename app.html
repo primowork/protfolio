@@ -1992,9 +1992,9 @@
     /* ── Filter 5: Momentum — MA200 ──────────────── */
     var f5 = syms.map(function(s) {
       var m = ma200Data[s]; if (!m) return null;
-      return { sym: s, pass: !m.below || m.pct > -1, val: (m.below ? '' : '+') + m.pct + '% vs MA200' };
+      return { sym: s, pass: !m.below || m.pct > -8, val: (m.below ? '' : '+') + m.pct + '% vs MA200' };
     }).filter(Boolean).sort(function(a,b){ return b.pass-a.pass; });
-    panel.appendChild(makeFilter(5,'מומנטום','Not below MA200 by > 1%','כיוון השוק — האם המניה נסחרת מעל ממוצע 200 יומי?','🚀',f5));
+    panel.appendChild(makeFilter(5,'מומנטום','Not below MA200 by > 8%','כיוון השוק — האם המניה נסחרת מעל ממוצע 200 יומי?','🚀',f5));
 
     /* ── Filter 6: Insider Buying ────────────────── */
     var f6 = syms.map(function(s) {
@@ -2011,7 +2011,7 @@
       var val = 'TTM ' + (d.ttmGrowth >= 0 ? '+' : '') + d.ttmGrowth + '% | CAGR ' + (d.cagr >= 0 ? '+' : '') + d.cagr + '%';
       return { sym: s, pass: pass, val: val };
     }).filter(Boolean).sort(function(a,b){ return b.pass-a.pass; });
-    if (f7.length) panel.appendChild(makeFilter(7,'מגמת צמיחה','No decel. (TTM ≥ 70% of CAGR)','האצה/האטה — האם הצמיחה האיצה או האטה לאחרונה?','📉',f7));
+    if (f7.length) panel.appendChild(makeFilter(7,'מגמת צמיחה','TTM Revenue ≥ 70% of 3yr CAGR','האצה/האטה — האם הצמיחה (4 רבעונים אחרונים vs שנה קודמת) האיצה או האטה?','📉',f7));
 
     /* ── Summary scoreboard ──────────────────────── */
     var ranked = syms.filter(function(s){ return scores[s] && scores[s].total > 0; })

@@ -805,35 +805,74 @@ async def get_insider(symbols: str = ""):
     if not symbols:
         return JSONResponse({})
     sym_list = [s.strip().upper() for s in symbols.split(",") if s.strip()]
+    finnhub_key = os.getenv("FINNHUB_API_KEY", "")
+    six_months_ago = (datetime.utcnow() - timedelta(days=180)).strftime("%Y-%m-%d")
+    today = datetime.utcnow().strftime("%Y-%m-%d")
+
+    def fetch_finnhub(sym):
+        import urllib.request, json as _json
+        url = (f"https://finnhub.io/api/v1/stock/insider-transactions"
+               f"?symbol={sym}&from={six_months_ago}&to={today}&token={finnhub_key}")
+        with urllib.request.urlopen(url, timeout=8) as r:
+            data = _json.loads(r.read())
+        buys = [
+            {"name": tx.get("name", ""), "date": tx.get("transactionDate", ""),
+             "shares": tx.get("change", 0), "value": round((tx.get("price") or 0) * abs(tx.get("change") or 0))}
+            for tx in data.get("data", [])
+            if tx.get("transactionCode") == "P" and (tx.get("change") or 0) > 0
+        ]
+        return {"hasBuys": len(buys) > 0, "buyCount": len(buys), "buys": buys[:3], "source": "finnhub"}
+
+    def fetch_yfinance_fallback(sym):
+        t = yf.Ticker(sym)
+        txns = t.insider_transactions
+        if txns is None or (hasattr(txns, "empty") and txns.empty):
+            return {"hasBuys": False, "buyCount": 0, "buys": [], "source": "yfinance"}
+        cutoff = datetime.utcnow() - timedelta(days=180)
+        buys = []
+        for col in txns.columns:
+            pass  # just iterate rows below
+        for _, row in txns.iterrows():
+            # try every plausible date/transaction column name
+            date_val = None
+            for dc in ("Date", "Start Date", "startDate", "date"):
+                if dc in row.index and row[dc] is not None:
+                    date_val = row[dc]; break
+            trans_val = ""
+            for tc in ("Transaction", "transaction", "transactionType"):
+                if tc in row.index and row[tc] is not None:
+                    trans_val = str(row[tc]).lower(); break
+            if date_val is None:
+                continue
+            if hasattr(date_val, "to_pydatetime"):
+                date_val = date_val.to_pydatetime()
+            date_naive = date_val.replace(tzinfo=None) if getattr(date_val, "tzinfo", None) else date_val
+            if date_naive >= cutoff and ("buy" in trans_val or "purchase" in trans_val):
+                name = ""
+                for nc in ("Insider Trading", "insider", "name", "Name"):
+                    if nc in row.index and row[nc] is not None:
+                        name = str(row[nc]); break
+                shares_val = 0
+                for sc in ("Shares", "shares", "change"):
+                    if sc in row.index and row[sc] is not None:
+                        try: shares_val = int(row[sc])
+                        except: pass
+                        break
+                buys.append({"name": name, "date": date_naive.strftime("%d/%m/%Y"),
+                             "shares": shares_val, "value": 0})
+        return {"hasBuys": len(buys) > 0, "buyCount": len(buys), "buys": buys[:3], "source": "yfinance"}
 
     def fetch_one(sym):
         try:
-            t = yf.Ticker(sym)
-            txns = t.insider_transactions
-            if txns is None or (hasattr(txns, "empty") and txns.empty):
-                return sym, {"hasBuys": False, "buyCount": 0, "buys": []}
-            six_months_ago = datetime.utcnow() - timedelta(days=180)
-            buys = []
-            for _, row in txns.iterrows():
-                date_val = row.get("Date") or row.get("Start Date") or row.get("startDate")
-                trans_val = str(row.get("Transaction") or row.get("transaction") or "").lower()
-                if date_val is None:
-                    continue
-                if hasattr(date_val, "to_pydatetime"):
-                    date_val = date_val.to_pydatetime()
-                if hasattr(date_val, "replace"):
-                    date_naive = date_val.replace(tzinfo=None) if getattr(date_val, "tzinfo", None) else date_val
-                else:
-                    continue
-                if date_naive >= six_months_ago and ("buy" in trans_val or "purchase" in trans_val):
-                    name = str(row.get("Insider Trading") or row.get("insider") or "")
-                    shares = int(row.get("Shares") or 0)
-                    value = float(row.get("Value") or 0)
-                    buys.append({"name": name, "date": date_naive.strftime("%d/%m/%Y"),
-                                 "shares": shares, "value": value})
-            return sym, {"hasBuys": len(buys) > 0, "buyCount": len(buys), "buys": buys[:3]}
+            if finnhub_key:
+                return sym, fetch_finnhub(sym)
+            return sym, fetch_yfinance_fallback(sym)
         except Exception as e:
             logging.warning(f"Insider {sym}: {e}")
+            try:
+                return sym, fetch_yfinance_fallback(sym)
+            except Exception as e2:
+                logging.warning(f"Insider yf fallback {sym}: {e2}")
         return sym, None
 
     loop = asyncio.get_event_loop()
@@ -845,41 +884,59 @@ async def get_insider(symbols: str = ""):
 
 @app.get("/api/growth_trend")
 async def get_growth_trend(symbols: str = ""):
+    """
+    Returns CAGR (3-year annual) and true TTM growth (last 4 quarters vs prior 4 quarters).
+    Flags deceleration when TTM growth is <70% of historical CAGR.
+    """
     if not symbols:
         return JSONResponse({})
     sym_list = [s.strip().upper() for s in symbols.split(",") if s.strip()]
 
+    def _find_revenue(income):
+        for idx in income.index:
+            if "Revenue" in str(idx):
+                return income.loc[idx]
+        return None
+
     def fetch_one(sym):
         try:
             t = yf.Ticker(sym)
-            income = t.income_stmt
-            if income is None or income.empty:
+
+            # ── True TTM: sum of last 4 quarterly revenues vs prior 4 ──
+            q_income = t.quarterly_income_stmt
+            ttm_growth = None
+            if q_income is not None and not q_income.empty:
+                q_rev = _find_revenue(q_income)
+                if q_rev is not None:
+                    q_vals = q_rev.dropna().sort_index(ascending=False)
+                    if len(q_vals) >= 8:
+                        ttm     = sum(float(q_vals.iloc[i]) for i in range(4))
+                        prev_ttm = sum(float(q_vals.iloc[i]) for i in range(4, 8))
+                        if prev_ttm != 0:
+                            ttm_growth = (ttm - prev_ttm) / abs(prev_ttm) * 100
+
+            # ── CAGR: 3-year from annual income statement ──
+            a_income = t.income_stmt
+            cagr = None
+            if a_income is not None and not a_income.empty:
+                a_rev = _find_revenue(a_income)
+                if a_rev is not None:
+                    a_vals = a_rev.dropna().sort_index(ascending=False)
+                    a_list = [float(a_vals.iloc[i]) for i in range(min(4, len(a_vals)))]
+                    if len(a_list) >= 4 and a_list[3] > 0:
+                        cagr = ((a_list[0] / a_list[3]) ** (1.0 / 3) - 1) * 100
+                    elif len(a_list) >= 3 and a_list[2] > 0:
+                        cagr = ((a_list[0] / a_list[2]) ** (1.0 / 2) - 1) * 100
+
+            if ttm_growth is None or cagr is None:
                 return sym, None
-            rev_row = None
-            for idx in income.index:
-                if "Revenue" in str(idx):
-                    rev_row = income.loc[idx]
-                    break
-            if rev_row is None:
-                return sym, None
-            rev = rev_row.dropna().sort_index(ascending=False)
-            if len(rev) < 2:
-                return sym, None
-            vals = [float(rev.iloc[i]) for i in range(min(4, len(rev)))]
-            if vals[1] == 0:
-                return sym, None
-            ttm_growth = (vals[0] - vals[1]) / abs(vals[1]) * 100
-            if len(vals) >= 4 and vals[3] > 0:
-                cagr = ((vals[0] / vals[3]) ** (1.0 / 3) - 1) * 100
-            elif len(vals) >= 3 and vals[2] > 0:
-                cagr = ((vals[0] / vals[2]) ** (1.0 / 2) - 1) * 100
-            else:
-                cagr = ttm_growth
+
             decelerating = False
             decel_pct = None
             if cagr > 3:
                 decel_pct = cagr - ttm_growth
-                decelerating = decel_pct > (cagr * 0.30)
+                decelerating = ttm_growth < cagr * 0.70  # TTM < 70% of CAGR
+
             return sym, {
                 "cagr": round(cagr, 1),
                 "ttmGrowth": round(ttm_growth, 1),
