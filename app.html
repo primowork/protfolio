@@ -2105,16 +2105,18 @@
 
         if (r.status === 'na_neg') {
           mid.innerHTML = 'PE <b style="color:#e2e8f0">' + r.pe.toFixed(1) + '</b> · ' +
-                          'CAGR <b style="color:#64748b">' + (r.cagr==null?'—':(r.cagr>=0?'+':'')+r.cagr.toFixed(1)+'%') + '</b> · ' +
-                          'TTM <b style="color:#64748b">' + (r.ttm==null?'—':(r.ttm>=0?'+':'')+r.ttm.toFixed(1)+'%') + '</b>';
-          badge.innerHTML = '<div style="font-size:11.5px;color:' + COLOR.na + ';">N/A</div>' +
-                            '<div style="font-size:10.5px;color:' + COLOR.na + ';opacity:.8;">צמיחה שלילית</div>';
+                          'CAGR <b style="color:#f87171">' + (r.cagr==null?'—':(r.cagr>=0?'+':'')+r.cagr.toFixed(1)+'%') + '</b> · ' +
+                          'TTM <b style="color:#f87171">' + (r.ttm==null?'—':(r.ttm>=0?'+':'')+r.ttm.toFixed(1)+'%') + '</b>';
+          badge.innerHTML = '<div style="font-size:13px;font-weight:700;color:#f87171;">🚨 סכנה</div>' +
+                            '<div style="font-size:10px;color:#f87171;opacity:.9;line-height:1.35;">התכווצות הכנסות</div>';
+          row.style.background = 'hsl(0,40%,10%)';
         } else if (r.status === 'na_low') {
           mid.innerHTML = 'PE <b style="color:#e2e8f0">' + r.pe.toFixed(1) + '</b> · ' +
-                          'CAGR <b style="color:#94a3b8">+' + r.cagr.toFixed(1) + '%</b> · ' +
-                          'TTM <b style="color:#94a3b8">' + (r.ttm>=0?'+':'') + r.ttm.toFixed(1) + '%</b>';
-          badge.innerHTML = '<div style="font-size:11.5px;color:' + COLOR.na + ';">N/A</div>' +
-                            '<div style="font-size:10.5px;color:' + COLOR.na + ';opacity:.8;">צמיחה &lt; 5%</div>';
+                          'CAGR <b style="color:#fbbf24">+' + r.cagr.toFixed(1) + '%</b> · ' +
+                          'TTM <b style="color:#fbbf24">' + (r.ttm>=0?'+':'') + r.ttm.toFixed(1) + '%</b>';
+          badge.innerHTML = '<div style="font-size:13px;font-weight:700;color:#fbbf24;">⚠️ אזהרה</div>' +
+                            '<div style="font-size:10px;color:#fbbf24;opacity:.9;line-height:1.35;">קיפאון בצמיחה</div>';
+          row.style.background = 'hsl(38,40%,8%)';
         } else if (r.status === 'upside') {
           mid.innerHTML = 'PE <b style="color:#e2e8f0">' + r.pe.toFixed(1) + '</b> · ' +
                           'CAGR <b style="color:#67e8f9">+' + r.cagr.toFixed(1) + '%</b> · ' +
