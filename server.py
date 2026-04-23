@@ -319,19 +319,58 @@ async def get_fundamentals(symbols: str = ""):
 
     def fetch_one(sym):
         try:
-            info = yf.Ticker(sym).info
+            t      = yf.Ticker(sym)
+            info   = t.info
             result = {}
             fcf    = info.get("freeCashflow")
             mktcap = info.get("marketCap")
-            debt   = info.get("totalDebt")
-            ebitda = info.get("ebitda")
             roe    = info.get("returnOnEquity")
             if fcf and mktcap and mktcap > 0:
                 result["fcfYield"] = round(fcf / mktcap * 100, 1)
-            if debt is not None and ebitda and ebitda > 0:
-                result["debtEbitda"] = round(debt / ebitda, 1)
             if roe is not None:
                 result["roe"] = round(roe * 100, 1)
+
+            # Debt/EBITDA — try info first, then balance sheet + income stmt
+            debt   = info.get("totalDebt") or info.get("longTermDebt")
+            ebitda = info.get("ebitda") or info.get("EBITDA")
+            if (debt is None or not ebitda or ebitda <= 0):
+                try:
+                    import pandas as pd
+                    bs  = t.balance_sheet
+                    inc = t.income_stmt
+                    if debt is None and not bs.empty:
+                        for idx in bs.index:
+                            s = str(idx)
+                            if s in ("Total Debt", "Long Term Debt", "Net Debt"):
+                                v = bs.iloc[:, 0].get(idx)
+                                if v is not None and not pd.isna(v):
+                                    debt = float(v); break
+                    if (not ebitda or ebitda <= 0) and not inc.empty:
+                        for idx in inc.index:
+                            s = str(idx)
+                            if s == "EBITDA":
+                                v = inc.iloc[:, 0].get(idx)
+                                if v is not None and not pd.isna(v):
+                                    ebitda = float(v); break
+                        if not ebitda or ebitda <= 0:
+                            # compute: EBIT + D&A
+                            ebit, da = None, None
+                            for idx in inc.index:
+                                s = str(idx)
+                                if s in ("Operating Income", "EBIT"):
+                                    v = inc.iloc[:, 0].get(idx)
+                                    if v is not None and not pd.isna(v): ebit = float(v)
+                                if "Depreciation" in s:
+                                    v = inc.iloc[:, 0].get(idx)
+                                    if v is not None and not pd.isna(v): da = float(v)
+                            if ebit is not None and da is not None:
+                                ebitda = ebit + abs(da)
+                except Exception as fe:
+                    logging.debug(f"Fundamentals fallback {sym}: {fe}")
+
+            if debt is not None and ebitda and ebitda > 0:
+                result["debtEbitda"] = round(debt / ebitda, 1)
+
             if result:
                 return sym, result
         except Exception as e:
