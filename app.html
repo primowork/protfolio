@@ -1650,10 +1650,14 @@
   function getSymbols() {
     try {
       var s = JSON.parse(localStorage.getItem('primo_portfolio_v6') || '{}');
-      var txns = s.transactions || [];
-      var set = {};
-      txns.forEach(function(t) { var sym = t.ticker || t.symbol; if (sym) set[sym.toUpperCase()] = 1; });
-      return Object.keys(set);
+      var net = {};
+      (s.transactions || []).forEach(function(t) {
+        var sym = (t.ticker || t.symbol || '').toUpperCase();
+        if (!sym) return;
+        var sh = parseFloat(t.shares) || 0;
+        net[sym] = (net[sym] || 0) + (t.type === 'sell' ? -sh : sh);
+      });
+      return Object.keys(net).filter(function(k) { return net[k] > 0; });
     } catch(e) { return []; }
   }
 
@@ -1919,10 +1923,6 @@
       total++; var p5 = !m.below || m.pct > -8; if (p5) passes++;
       filters.push({ name: '🚀 מומנטום', pass: p5, val: (m.below ? '' : '+') + m.pct + '% MA200' });
     }
-    if (ins) {
-      total++; var p6 = ins.hasBuys === true; if (p6) passes++;
-      filters.push({ name: '👔 בעלי עניין', pass: p6, val: (ins.buyCount || 0) + ' קניות' });
-    }
     if (gt) {
       total++; var p7 = !gt.decelerating; if (p7) passes++;
       filters.push({ name: '📉 מגמה', pass: p7, val: 'TTM ' + (gt.ttmGrowth >= 0 ? '+' : '') + gt.ttmGrowth + '%' });
@@ -1932,14 +1932,14 @@
       container.innerHTML = '<span style="color:#f87171;font-size:13px;">לא נמצאו נתונים עבור ' + sym + '</span>';
       return;
     }
-    var sc = passes >= 5 ? '#34d399' : passes >= 3 ? '#fbbf24' : '#f87171';
+    var sc = passes >= total * 0.7 ? '#34d399' : passes >= total * 0.5 ? '#fbbf24' : '#f87171';
     var row = document.createElement('div');
     row.style.cssText = 'display:flex;align-items:center;gap:10px;margin-bottom:8px;flex-wrap:wrap;direction:rtl;';
     row.innerHTML =
       '<span style="font-size:24px;font-weight:800;color:' + sc + ';">' + passes + '/' + total + '</span>' +
       '<span style="font-size:17px;font-weight:700;color:#e2e8f0;">' + sym + '</span>' +
       '<span style="font-size:13px;color:' + sc + ';">' +
-        (passes >= 5 ? '✅ עובר רוב הפילטרים' : passes >= 3 ? '⚠️ חלקי' : '❌ לא עובר') + '</span>';
+        (passes >= total * 0.7 ? '✅ עובר רוב הפילטרים' : passes >= total * 0.5 ? '⚠️ חלקי' : '❌ לא עובר') + '</span>';
     container.appendChild(row);
     var chips = document.createElement('div');
     chips.style.cssText = 'display:flex;flex-wrap:wrap;gap:5px;direction:rtl;';
@@ -1953,6 +1953,13 @@
       chips.appendChild(chip);
     });
     container.appendChild(chips);
+    /* insider callout in screener (informational) */
+    if (ins && ins.hasBuys) {
+      var iNote = document.createElement('div');
+      iNote.style.cssText = 'margin-top:6px;font-size:12px;color:#34d399;';
+      iNote.textContent = '👔 רכישת בעלי עניין: ' + (ins.buyCount || 0) + ' קניות ב-6 חודשים אחרונים';
+      container.appendChild(iNote);
+    }
   }
 
   function renderAnalysis(panel, ma200Data, peData, revData, gmData, fundData, insiderData, growthData) {
@@ -2136,22 +2143,34 @@
     }).filter(Boolean).sort(function(a,b){ return b.pass-a.pass; });
     panel.appendChild(makeFilter(5,'מומנטום','Not below MA200 by > 8%','כיוון השוק — האם המניה נסחרת מעל ממוצע 200 יומי?','🚀',f5));
 
-    /* ── Filter 6: Insider Buying ────────────────── */
-    var f6 = syms.map(function(s) {
-      var d = insiderData[s]; if (!d) return null;
-      var cnt = d.buyCount || 0;
-      return { sym: s, pass: d.hasBuys === true, val: cnt + ' קניות (6m)' };
-    }).filter(Boolean).sort(function(a,b){ return b.pass-a.pass; });
-    if (f6.length) panel.appendChild(makeFilter(6,'בעלי עניין','Insider Buys in last 6m','קנייה עצמית — האם מנהלים קנו מניות בחצי השנה האחרונה?','👔',f6));
+    /* ── Insider callout (not scored — rare event) ── */
+    var insiderBuyers = syms.filter(function(s) {
+      var d = insiderData[s]; return d && d.hasBuys === true;
+    });
+    if (insiderBuyers.length) {
+      var insBox = document.createElement('div');
+      insBox.style.cssText = 'margin-bottom:10px;border:1px solid #34d39944;border-radius:6px;' +
+        'padding:8px 12px;background:#052e1640;direction:rtl;display:flex;align-items:center;gap:8px;flex-wrap:wrap;';
+      insBox.innerHTML = '<span style="font-size:14px;font-weight:700;color:#34d399;">👔 רכישת בעלי עניין:</span>';
+      insiderBuyers.forEach(function(s) {
+        var cnt = (insiderData[s].buyCount || 0);
+        var chip = document.createElement('span');
+        chip.style.cssText = 'font-size:13px;font-weight:700;color:#34d399;background:#34d39918;' +
+          'border:1px solid #34d39944;border-radius:4px;padding:1px 8px;';
+        chip.textContent = s + ' (' + cnt + ' קניות 6m)';
+        insBox.appendChild(chip);
+      });
+      panel.appendChild(insBox);
+    }
 
-    /* ── Filter 7: Growth Trend ──────────────────── */
+    /* ── Filter 6→7 renumbered: Growth Trend ─────── */
     var f7 = syms.map(function(s) {
       var d = growthData[s]; if (!d) return null;
       var pass = !d.decelerating;
       var val = 'TTM ' + (d.ttmGrowth >= 0 ? '+' : '') + d.ttmGrowth + '% | CAGR ' + (d.cagr >= 0 ? '+' : '') + d.cagr + '%';
       return { sym: s, pass: pass, val: val };
     }).filter(Boolean).sort(function(a,b){ return b.pass-a.pass; });
-    if (f7.length) panel.appendChild(makeFilter(7,'מגמת צמיחה','TTM Revenue ≥ 70% of 3yr CAGR','האצה/האטה — האם הצמיחה (4 רבעונים אחרונים vs שנה קודמת) האיצה או האטה?','📉',f7));
+    if (f7.length) panel.appendChild(makeFilter(6,'מגמת צמיחה','TTM Revenue ≥ 70% of 3yr CAGR','האצה/האטה — האם הצמיחה (4 רבעונים אחרונים vs שנה קודמת) האיצה או האטה?','📉',f7));
 
     /* ── Multiple Compression Risk ──────────────── */
     (function() {
