@@ -1020,9 +1020,13 @@ async def get_growth_trend(symbols: str = ""):
 
             decelerating = False
             decel_pct = None
-            if cagr > 3:
+            if cagr <= 0:
+                # Negative 3-yr CAGR = shrinking revenue — fail unless TTM shows real reversal
+                decelerating = ttm_growth <= 5
+            elif cagr > 3:
                 decel_pct = cagr - ttm_growth
                 decelerating = ttm_growth < cagr * 0.70  # TTM < 70% of CAGR
+            # 0 < cagr <= 3: low but stable — not flagged
 
             return sym, {
                 "cagr": round(cagr, 1),
