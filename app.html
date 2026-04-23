@@ -2021,105 +2021,13 @@
     }
   }
 
-  /* ── helpers for alerts tab ─────────────────────── */
-  function getSharesParam(syms) {
-    try {
-      var s = JSON.parse(localStorage.getItem('primo_portfolio_v6') || '{}');
-      var txns = s.transactions || [];
-      var net = {};
-      txns.forEach(function(t) {
-        var sym = (t.ticker || t.symbol || '').toUpperCase();
-        if (!sym) return;
-        var sh = parseFloat(t.shares) || 0;
-        if (!net[sym]) net[sym] = 0;
-        net[sym] += (t.type === 'sell' ? -sh : sh);
-      });
-      return Object.keys(net)
-        .filter(function(k) { return net[k] > 0; })
-        .map(function(k) { return k + ':' + net[k]; })
-        .join(',');
-    } catch(e) { return ''; }
-  }
-
-  function renderAlerts(panel, data) {
-    panel.innerHTML = '';
-    var alerts = (data && data.alerts) || [];
-    var sevColor  = { high: '#f87171', medium: '#fb923c', low: '#60a5fa' };
-    var sevHe     = { high: 'גבוה', medium: 'בינוני', low: 'נמוך' };
-    var typeIcon  = {
-      price_move:    '📈', ma200_cross: '📉', drawdown: '⬇️',
-      '52w_high':    '🏆', revenue_trend: '📊', earnings: '📅',
-      concentration: '⚖️'
-    };
-
-    /* header row */
-    var hdr = document.createElement('div');
-    hdr.style.cssText = 'display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;direction:rtl;';
-    var countEl = document.createElement('span');
-    countEl.style.cssText = 'font-size:13.5px;color:hsl(210,10%,40%);';
-    countEl.textContent = alerts.length ? alerts.length + ' התראות פעילות' : 'אין התראות פעילות';
-    hdr.appendChild(countEl);
-    if (data && data.generated_at) {
-      try {
-        var ts = document.createElement('span');
-        ts.style.cssText = 'font-size:11px;color:hsl(210,10%,30%);';
-        ts.textContent = 'עודכן ' + new Date(data.generated_at).toLocaleTimeString('he-IL', {hour:'2-digit',minute:'2-digit'});
-        hdr.appendChild(ts);
-      } catch(e) {}
-    }
-    panel.appendChild(hdr);
-
-    if (!alerts.length) {
-      var empty = document.createElement('div');
-      empty.style.cssText = 'text-align:center;padding:36px 16px;';
-      empty.innerHTML = '<div style="font-size:30px;margin-bottom:10px;">✅</div>' +
-        '<div style="color:#34d399;font-size:16.2px;font-weight:600;">הכל תקין בפורטפוליו</div>' +
-        '<div style="color:hsl(210,10%,35%);font-size:13.5px;margin-top:6px;">אין התראות פעילות כרגע</div>';
-      panel.appendChild(empty);
-      return;
-    }
-
-    /* scrollable list */
-    var list = document.createElement('div');
-    list.style.cssText = 'display:flex;flex-direction:column;gap:8px;max-height:480px;overflow-y:auto;padding-left:2px;';
-    panel.appendChild(list);
-
-    alerts.forEach(function(alert) {
-      var color = sevColor[alert.severity] || '#94a3b8';
-      var icon  = typeIcon[alert.type] || '🔔';
-      var sevLabel = sevHe[alert.severity] || '';
-
-      var card = document.createElement('div');
-      card.style.cssText = 'background:hsl(222,14%,10%);border:1px solid hsl(222,14%,18%);border-right:3px solid ' + color + ';border-radius:4px;padding:10px 14px;direction:rtl;';
-
-      var top = document.createElement('div');
-      top.style.cssText = 'display:flex;align-items:center;justify-content:space-between;margin-bottom:3px;';
-      top.innerHTML =
-        '<div style="display:flex;align-items:center;gap:7px;">' +
-        '<span style="font-size:16px;">' + icon + '</span>' +
-        '<span style="font-weight:700;font-size:16.2px;color:#e2e8f0;">' + alert.symbol + '</span>' +
-        '<span style="font-weight:700;font-size:14.8px;color:' + color + ';">' + (alert.title || '') + '</span>' +
-        '</div>' +
-        '<span style="font-size:11px;font-weight:700;color:' + color + ';background:' + color + '22;border:1px solid ' + color + '44;padding:1px 7px;border-radius:3px;">' + sevLabel + '</span>';
-      card.appendChild(top);
-
-      var msg = document.createElement('div');
-      msg.style.cssText = 'font-size:14px;color:#94a3b8;line-height:1.4;';
-      msg.textContent = alert.message || '';
-      card.appendChild(msg);
-
-      list.appendChild(card);
-    });
-  }
-
-  /* ── tabbed container for all 5 insight panels ──── */
+  /* ── tabbed container for all 4 insight panels ──── */
   function makeInsightTabs() {
     var TAB_DEFS = [
       { id: 'analysis', label: '🧠 ניתוח',     color: '#f59e0b' },
       { id: 'ma200',    label: '📉 MA200',      color: '#67e8f9' },
       { id: 'pe',       label: '💰 PE',         color: '#a78bfa' },
       { id: 'revenue',  label: '📊 Revenue',    color: '#34d399' },
-      { id: 'alerts',   label: '🔔 התראות',    color: '#f87171' },
     ];
 
     var wrap = document.createElement('div');
@@ -2190,26 +2098,22 @@
     if (_fetched) return;
     _fetched = true;
 
-    var q          = syms.join(',');
-    var enc        = encodeURIComponent(q);
-    var sharesParam = getSharesParam(syms);
+    var q   = syms.join(',');
+    var enc = encodeURIComponent(q);
 
     function jFetch(url) {
       return fetch(url).then(function(r){return r.json();}).catch(function(){return {};});
     }
 
-    var pMA200   = jFetch('/api/ma200?symbols='        + enc);
-    var pPE      = jFetch('/api/pe?symbols='           + enc);
-    var pRev     = jFetch('/api/revenue?symbols='      + enc);
-    var pGM      = jFetch('/api/gross_margin?symbols=' + enc);
-    var pFund    = jFetch('/api/fundamentals?symbols=' + enc);
-    var alertsUrl = '/api/alerts?symbols=' + enc + (sharesParam ? '&shares=' + encodeURIComponent(sharesParam) : '');
-    var pAlerts  = jFetch(alertsUrl);
+    var pMA200 = jFetch('/api/ma200?symbols='        + enc);
+    var pPE    = jFetch('/api/pe?symbols='           + enc);
+    var pRev   = jFetch('/api/revenue?symbols='      + enc);
+    var pGM    = jFetch('/api/gross_margin?symbols=' + enc);
+    var pFund  = jFetch('/api/fundamentals?symbols=' + enc);
 
-    pMA200  .then(function(d){ renderMA200(tc.panels.ma200, d); });
-    pPE     .then(function(d){ renderPE(tc.panels.pe, d); });
-    pRev    .then(function(d){ setupRevenuePanel(tc.panels.revenue, q, d); });
-    pAlerts .then(function(d){ renderAlerts(tc.panels.alerts, d); });
+    pMA200.then(function(d){ renderMA200(tc.panels.ma200, d); });
+    pPE   .then(function(d){ renderPE(tc.panels.pe, d); });
+    pRev  .then(function(d){ setupRevenuePanel(tc.panels.revenue, q, d); });
 
     /* analysis tab needs all 5 */
     Promise.all([pMA200, pPE, pRev, pGM, pFund]).then(function(res) {
@@ -3598,6 +3502,386 @@
   });
 
   setTimeout(enhance, 3500);
+
+})();
+</script>
+
+<!-- ================================================================
+     Feature Patch v19 — Alerts Standalone Component
+     Injects "🔔 התראות" as a full main-nav tab with its own page.
+     ================================================================ -->
+<style>
+  /* ── alerts panel overlay ─────────────────────── */
+  #pp-alerts-overlay {
+    display: none;
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: hsl(222,20%,6%);
+    z-index: 30;
+    overflow-y: auto;
+    direction: rtl;
+  }
+  #pp-alerts-overlay.pp-alerts-active { display: block; }
+
+  /* cards */
+  .pp-alc {
+    background: hsl(222,14%,10%);
+    border: 1px solid hsl(222,14%,18%);
+    border-right: 3px solid;
+    border-radius: 5px;
+    padding: 11px 14px;
+    margin-bottom: 9px;
+    direction: rtl;
+    transition: background .12s;
+  }
+  .pp-alc:hover { background: hsl(222,14%,12%); }
+  .pp-alc.sev-high   { border-right-color: #f87171; }
+  .pp-alc.sev-medium { border-right-color: #fb923c; }
+  .pp-alc.sev-low    { border-right-color: #60a5fa; }
+  .pp-alc-top   { display:flex;align-items:center;justify-content:space-between;margin-bottom:3px; }
+  .pp-alc-left  { display:flex;align-items:center;gap:7px; }
+  .pp-alc-sym   { font-weight:700;font-size:16.2px;color:#e2e8f0; }
+  .pp-alc-title { font-weight:700;font-size:14.8px; }
+  .pp-alc-badge { font-size:11px;font-weight:700;padding:1px 7px;border-radius:3px;white-space:nowrap; }
+  .pp-alc-msg   { font-size:13.5px;color:#94a3b8;line-height:1.45; }
+
+  /* nav button */
+  #pp-alerts-navbtn {
+    position: relative;
+    white-space: nowrap;
+    cursor: pointer;
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    transition: color .15s, border-color .15s;
+  }
+  #pp-alerts-navbtn.pp-alerts-navactive {
+    color: #f87171 !important;
+    border-bottom-color: #f87171 !important;
+  }
+  #pp-alerts-navbtn .pp-badge {
+    position: absolute;
+    top: 2px; left: 2px;
+    min-width: 16px; height: 16px;
+    background: #f87171;
+    color: #fff;
+    font-size: 10px; font-weight: 700;
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    padding: 0 4px;
+    line-height: 1;
+  }
+  /* scrollbar inside overlay */
+  #pp-alerts-list::-webkit-scrollbar       { width: 4px; }
+  #pp-alerts-list::-webkit-scrollbar-track { background: transparent; }
+  #pp-alerts-list::-webkit-scrollbar-thumb { background: hsl(222,14%,26%); border-radius: 2px; }
+</style>
+
+<script>
+/* =======================================================
+   Primo Portfolio Feature Patch v19
+   Alerts — standalone main-nav tab
+   ======================================================= */
+(function () {
+  'use strict';
+
+  var PANEL_ID    = 'pp-alerts-overlay';
+  var NAVBTN_ID   = 'pp-alerts-navbtn';
+  var LIST_ID     = 'pp-alerts-list';
+  var REFRESH_MS  = 300000;   // 5 min auto-refresh
+  var _injected   = false;
+  var _loaded     = false;
+  var _refreshTmr = null;
+
+  var SEV_COLOR = { high: '#f87171', medium: '#fb923c', low: '#60a5fa' };
+  var SEV_HE    = { high: 'גבוה',    medium: 'בינוני',  low: 'נמוך'   };
+  var TYPE_ICON = {
+    price_move: '📈', ma200_cross: '📉', drawdown: '⬇️',
+    '52w_high': '🏆', revenue_trend: '📊', earnings: '📅',
+    concentration: '⚖️'
+  };
+
+  /* ── read portfolio from localStorage ────────────── */
+  function getState() {
+    try { return JSON.parse(localStorage.getItem('primo_portfolio_v6') || '{}'); } catch(e) { return {}; }
+  }
+  function getSymbols() {
+    var s = getState(), seen = {}, out = [];
+    (s.transactions || []).forEach(function(t) {
+      var sym = (t.ticker || t.symbol || '').toUpperCase();
+      if (sym && !seen[sym]) { seen[sym] = 1; out.push(sym); }
+    });
+    return out;
+  }
+  function getSharesParam() {
+    var s = getState(), net = {};
+    (s.transactions || []).forEach(function(t) {
+      var sym = (t.ticker || t.symbol || '').toUpperCase();
+      if (!sym) return;
+      var sh = parseFloat(t.shares) || 0;
+      net[sym] = (net[sym] || 0) + (t.type === 'sell' ? -sh : sh);
+    });
+    return Object.keys(net).filter(function(k) { return net[k] > 0; })
+      .map(function(k) { return k + ':' + net[k]; }).join(',');
+  }
+
+  /* ── build API URL ────────────────────────────────── */
+  function buildUrl() {
+    var syms = getSymbols();
+    if (!syms.length) return null;
+    var url = '/api/alerts?symbols=' + encodeURIComponent(syms.join(','));
+    var sh  = getSharesParam();
+    if (sh) url += '&shares=' + encodeURIComponent(sh);
+    return url;
+  }
+
+  /* ── render one card ─────────────────────────────── */
+  function makeCard(alert) {
+    var color = SEV_COLOR[alert.severity] || '#94a3b8';
+    var div   = document.createElement('div');
+    div.className = 'pp-alc sev-' + (alert.severity || 'low');
+
+    var top = document.createElement('div');
+    top.className = 'pp-alc-top';
+
+    var left = document.createElement('div');
+    left.className = 'pp-alc-left';
+    left.innerHTML =
+      '<span style="font-size:17px">' + (TYPE_ICON[alert.type] || '🔔') + '</span>' +
+      '<span class="pp-alc-sym">'   + (alert.symbol || '') + '</span>' +
+      '<span class="pp-alc-title" style="color:' + color + '">' + (alert.title || '') + '</span>';
+
+    var badge = document.createElement('span');
+    badge.className = 'pp-alc-badge';
+    badge.style.cssText = 'color:' + color + ';background:' + color + '22;border:1px solid ' + color + '44;';
+    badge.textContent = SEV_HE[alert.severity] || '';
+
+    top.appendChild(left);
+    top.appendChild(badge);
+    div.appendChild(top);
+
+    var msg = document.createElement('div');
+    msg.className = 'pp-alc-msg';
+    msg.textContent = alert.message || '';
+    div.appendChild(msg);
+
+    return div;
+  }
+
+  /* ── render full list ────────────────────────────── */
+  function renderList(alerts, generatedAt) {
+    var list = document.getElementById(LIST_ID);
+    if (!list) return;
+    list.innerHTML = '';
+
+    if (!alerts || !alerts.length) {
+      list.innerHTML =
+        '<div style="text-align:center;padding:60px 20px;">' +
+        '<div style="font-size:40px;margin-bottom:14px">✅</div>' +
+        '<div style="color:#34d399;font-size:17px;font-weight:700">הכל תקין בפורטפוליו</div>' +
+        '<div style="color:hsl(210,10%,35%);font-size:14px;margin-top:8px">אין התראות פעילות כרגע</div>' +
+        '</div>';
+      return;
+    }
+    alerts.forEach(function(a) { list.appendChild(makeCard(a)); });
+
+    /* footer timestamp */
+    if (generatedAt) {
+      try {
+        var f = document.createElement('div');
+        f.style.cssText = 'text-align:left;font-size:11px;color:#334155;margin-top:4px;padding:0 2px;';
+        f.textContent = 'עודכן: ' + new Date(generatedAt).toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'});
+        list.appendChild(f);
+      } catch(e) {}
+    }
+  }
+
+  /* ── update badge count ──────────────────────────── */
+  function updateBadge(n) {
+    var btn = document.getElementById(NAVBTN_ID);
+    if (!btn) return;
+    var b = btn.querySelector('.pp-badge');
+    if (n > 0) {
+      if (!b) {
+        b = document.createElement('span');
+        b.className = 'pp-badge';
+        btn.appendChild(b);
+      }
+      b.textContent = n > 99 ? '99+' : String(n);
+    } else if (b) {
+      b.remove();
+    }
+  }
+
+  /* ── fetch alerts from backend ───────────────────── */
+  function fetchAlerts(forceRefresh) {
+    var url = buildUrl();
+    if (!url) { renderList([], null); return; }
+
+    var list = document.getElementById(LIST_ID);
+    if (!_loaded || forceRefresh) {
+      /* skeleton */
+      if (list) {
+        list.innerHTML = [1,2,3].map(function() {
+          return '<div style="background:linear-gradient(90deg,hsl(222,18%,11%) 25%,hsl(222,18%,15%) 50%,hsl(222,18%,11%) 75%);' +
+            'background-size:400px 100%;animation:pp-shimmer 1.4s infinite;border-radius:5px;height:68px;margin-bottom:9px;"></div>';
+        }).join('');
+      }
+    }
+
+    fetch(url)
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        var alerts = data.alerts || [];
+        _loaded = true;
+        renderList(alerts, data.generated_at);
+        updateBadge(alerts.length);
+        clearTimeout(_refreshTmr);
+        _refreshTmr = setTimeout(function() { fetchAlerts(false); }, REFRESH_MS);
+      })
+      .catch(function() {
+        if (list) list.innerHTML =
+          '<div style="padding:24px;color:#f87171;text-align:center;font-size:14px;">⚠️ שגיאה בטעינת ההתראות</div>';
+      });
+  }
+
+  /* ── show / hide panel ───────────────────────────── */
+  function showPanel() {
+    var overlay = document.getElementById(PANEL_ID);
+    var navBtn  = document.getElementById(NAVBTN_ID);
+    if (!overlay) return;
+    overlay.classList.add('pp-alerts-active');
+    if (navBtn) navBtn.classList.add('pp-alerts-navactive');
+    if (!_loaded) fetchAlerts(true);
+  }
+
+  function hidePanel() {
+    var overlay = document.getElementById(PANEL_ID);
+    var navBtn  = document.getElementById(NAVBTN_ID);
+    if (overlay) overlay.classList.remove('pp-alerts-active');
+    if (navBtn)  navBtn.classList.remove('pp-alerts-navactive');
+  }
+
+  /* ── build the overlay panel HTML ───────────────── */
+  function buildOverlay() {
+    if (document.getElementById(PANEL_ID)) return;
+
+    var overlay = document.createElement('div');
+    overlay.id = PANEL_ID;
+
+    /* sticky inner header */
+    var stickyHdr = document.createElement('div');
+    stickyHdr.style.cssText =
+      'position:sticky;top:0;z-index:1;background:hsl(222,20%,6%);' +
+      'border-bottom:1px solid hsl(222,14%,14%);padding:14px 20px 12px;' +
+      'display:flex;align-items:center;justify-content:space-between;direction:rtl;';
+
+    stickyHdr.innerHTML =
+      '<div style="display:flex;align-items:center;gap:10px;">' +
+        '<span style="font-size:22px">🔔</span>' +
+        '<span style="font-weight:700;font-size:19px;color:#e2e8f0;">התראות</span>' +
+        '<span id="pp-alerts-count" style="font-size:13px;color:hsl(210,10%,40%);"></span>' +
+      '</div>' +
+      '<button id="pp-alerts-refresh-btn" style="background:none;border:1px solid hsl(222,14%,26%);' +
+        'color:#64748b;border-radius:4px;cursor:pointer;padding:4px 12px;font-size:13px;font-weight:600;' +
+        'transition:all .15s;" onmouseover="this.style.borderColor=\'#f87171\';this.style.color=\'#f87171\';" ' +
+        'onmouseout="this.style.borderColor=\'hsl(222,14%,26%)\';this.style.color=\'#64748b\';">↻ רענן</button>';
+
+    overlay.appendChild(stickyHdr);
+
+    /* scrollable list area */
+    var listWrap = document.createElement('div');
+    listWrap.id = LIST_ID;
+    listWrap.style.cssText = 'padding:16px 20px 32px;max-width:820px;margin:0 auto;';
+    overlay.appendChild(listWrap);
+
+    document.body.appendChild(overlay);
+
+    /* wire refresh button */
+    document.getElementById('pp-alerts-refresh-btn').addEventListener('click', function() {
+      _loaded = false;
+      fetchAlerts(true);
+    });
+  }
+
+  /* ── inject nav tab button ───────────────────────── */
+  function injectNavTab() {
+    if (_injected || document.getElementById(NAVBTN_ID)) { _injected = true; return; }
+
+    /* find the React tab bar — parent of the "דשבורד" button */
+    var navBar  = null;
+    var dashBtn = null;
+    document.querySelectorAll('button').forEach(function(b) {
+      if (b.textContent.trim() === 'דשבורד') dashBtn = b;
+    });
+    if (!dashBtn) return;
+    navBar = dashBtn.parentElement;
+    if (!navBar) return;
+
+    /* clone style from an existing tab so it matches perfectly */
+    var cloneClass = dashBtn.className;
+    var cloneStyle = dashBtn.getAttribute('style') || '';
+
+    var btn = document.createElement('button');
+    btn.id        = NAVBTN_ID;
+    btn.className = cloneClass;
+    btn.setAttribute('style', cloneStyle);
+    btn.textContent = '🔔 התראות';
+
+    btn.addEventListener('click', function(e) {
+      e.stopPropagation();
+      var isActive = btn.classList.contains('pp-alerts-navactive');
+      if (isActive) {
+        hidePanel();
+      } else {
+        /* deactivate React tabs visually */
+        document.querySelectorAll('button').forEach(function(b) {
+          if (b !== btn && b.className && b.className.indexOf('border-violet-500') !== -1) {
+            /* simulate a click only to restore React state — no, just show our overlay on top */
+          }
+        });
+        showPanel();
+      }
+    });
+
+    navBar.appendChild(btn);
+    _injected = true;
+
+    /* hide our panel whenever a React nav tab is clicked */
+    navBar.addEventListener('click', function(e) {
+      if (e.target !== btn && e.target.tagName === 'BUTTON') {
+        hidePanel();
+      }
+    });
+  }
+
+  /* ── update count label in overlay header ─────── */
+  function syncCountLabel() {
+    var countEl = document.getElementById('pp-alerts-count');
+    var list    = document.getElementById(LIST_ID);
+    if (!countEl || !list) return;
+    var cards = list.querySelectorAll('.pp-alc').length;
+    countEl.textContent = cards ? cards + ' התראות פעילות' : '';
+  }
+
+  /* ── boot ─────────────────────────────────────── */
+  buildOverlay();
+
+  var _deb19 = null;
+  var obs19  = new MutationObserver(function() {
+    clearTimeout(_deb19);
+    _deb19 = setTimeout(function() {
+      injectNavTab();
+      syncCountLabel();
+    }, 400);
+  });
+  obs19.observe(document.body, { childList: true, subtree: true });
+
+  /* background fetch so badge is populated even before the user clicks */
+  setTimeout(function() {
+    injectNavTab();
+    fetchAlerts(true);
+  }, 4000);
 
 })();
 </script>
