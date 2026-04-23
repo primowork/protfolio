@@ -484,26 +484,86 @@ def _check_price_move(sym: str, fi) -> list:
         return []
 
 
-def _check_ma200_cross(sym: str, fi) -> list:
-    """Alert when price crosses the 200-day moving average."""
+def _check_ma200_cross(sym: str) -> list:
+    """Alert when price crossed the 200-day MA at any point in the last 7 trading days."""
     try:
-        price = fi.last_price
-        prev  = fi.previous_close
-        ma200 = getattr(fi, "two_hundred_day_average", None)
-        if not price or not prev or not ma200 or ma200 == 0:
+        hist = yf.download(sym, period="1y", auto_adjust=True, progress=False, threads=False)
+        if hist.empty:
             return []
-        was_above = prev  >= ma200
-        now_above = price >= ma200
-        if was_above == now_above:
+        closes = hist["Close"].squeeze().dropna()
+        if len(closes) < 205:
             return []
-        direction = "up" if now_above else "down"
-        side      = "מעל" if now_above else "מתחת ל"
-        return [{"symbol": sym, "type": "ma200_cross", "severity": "medium",
-                 "title": "חציית ממוצע 200 יומי",
-                 "message": f"{sym} חצתה {side}ממוצע הנע 200 יום (MA200: ${ma200:.2f})",
-                 "direction": direction}]
+        ma200 = closes.rolling(200).mean()
+
+        # Scan last 8 rows → up to 7 possible crossings
+        window_c   = closes.iloc[-8:]
+        window_m   = ma200.iloc[-8:]
+        last_cross = None                     # direction of most-recent crossing
+
+        for i in range(1, len(window_c)):
+            ma_prev = float(window_m.iloc[i - 1])
+            ma_curr = float(window_m.iloc[i])
+            if ma_prev == 0 or ma_curr == 0:
+                continue
+            was_above = float(window_c.iloc[i - 1]) >= ma_prev
+            now_above = float(window_c.iloc[i])     >= ma_curr
+            if was_above != now_above:
+                last_cross = "up" if now_above else "down"
+
+        if last_cross is None:
+            return []
+
+        price   = float(closes.iloc[-1])
+        ma_now  = float(ma200.iloc[-1])
+        side    = "מעל" if last_cross == "up" else "מתחת ל"
+        return [{"symbol": sym, "type": "ma200_cross", "severity": "high",
+                 "title": "חצייה ממוצע 200 יומי",
+                 "message": f"{sym} חצתה {side}ממוצע 200 יום בשבוע האחרון (מחיר: ${price:.2f} | MA200: ${ma_now:.2f})",
+                 "direction": last_cross}]
     except Exception as e:
         logging.debug(f"ma200_cross {sym}: {e}")
+        return []
+
+
+def _check_ma200w(sym: str) -> list:
+    """Alert when price crossed the 200-week MA in the last week."""
+    try:
+        hist = yf.download(sym, period="5y", interval="1wk",
+                           auto_adjust=True, progress=False, threads=False)
+        if hist.empty:
+            return []
+        closes = hist["Close"].squeeze().dropna()
+        if len(closes) < 205:
+            return []
+        ma200w = closes.rolling(200).mean()
+
+        # Check last 3 weekly bars → up to 2 possible crossings
+        window_c   = closes.iloc[-3:]
+        window_m   = ma200w.iloc[-3:]
+        last_cross = None
+
+        for i in range(1, len(window_c)):
+            ma_prev = float(window_m.iloc[i - 1])
+            ma_curr = float(window_m.iloc[i])
+            if ma_prev == 0 or ma_curr == 0:
+                continue
+            was_above = float(window_c.iloc[i - 1]) >= ma_prev
+            now_above = float(window_c.iloc[i])     >= ma_curr
+            if was_above != now_above:
+                last_cross = "up" if now_above else "down"
+
+        if last_cross is None:
+            return []
+
+        price    = float(closes.iloc[-1])
+        ma_now   = float(ma200w.iloc[-1])
+        side     = "מעל" if last_cross == "up" else "מתחת ל"
+        return [{"symbol": sym, "type": "ma200w_cross", "severity": "high",
+                 "title": "חצייה ממוצע 200 שבועי",
+                 "message": f"{sym} חצתה {side}ממוצע 200 שבוע בשבוע האחרון (מחיר: ${price:.2f} | MA200W: ${ma_now:.2f})",
+                 "direction": last_cross}]
+    except Exception as e:
+        logging.debug(f"ma200w {sym}: {e}")
         return []
 
 
@@ -675,10 +735,11 @@ def _run_sym_checks(sym: str, shares_map: dict) -> list:
     try:
         fi = yf.Ticker(sym).fast_info
         alerts += _check_price_move(sym, fi)
-        alerts += _check_ma200_cross(sym, fi)
         alerts += _check_52w_high(sym, fi)
     except Exception as e:
         logging.warning(f"fast_info {sym}: {e}")
+    alerts += _check_ma200_cross(sym)
+    alerts += _check_ma200w(sym)
     alerts += _check_drawdown(sym)
     alerts += _check_revenue_trend(sym)
     alerts += _check_earnings(sym)
