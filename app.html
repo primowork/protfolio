@@ -3719,9 +3719,9 @@
     transition: background .12s;
   }
   .pp-alc:hover { background: hsl(222,14%,12%); }
-  .pp-alc.sev-high   { border-right-color: #f87171; }
-  .pp-alc.sev-medium { border-right-color: #fb923c; }
-  .pp-alc.sev-low    { border-right-color: #60a5fa; }
+  .pp-alc.dir-up      { border-right-color: #34d399; }
+  .pp-alc.dir-down    { border-right-color: #f87171; }
+  .pp-alc.dir-neutral { border-right-color: #64748b; }
   .pp-alc-top   { display:flex;align-items:center;justify-content:space-between;margin-bottom:3px; }
   .pp-alc-left  { display:flex;align-items:center;gap:7px; }
   .pp-alc-sym   { font-weight:700;font-size:16.2px;color:#00d4ff;text-decoration:none;transition:color .15s; }
@@ -3787,6 +3787,7 @@
 
   var SEV_COLOR  = { high: '#f87171', medium: '#fb923c', low: '#60a5fa' };
   var SEV_HE     = { high: 'גבוה',    medium: 'בינוני',  low: 'נמוך'   };
+  var DIR_COLOR  = { up: '#34d399', down: '#f87171', neutral: '#64748b' };
   var TYPE_ICON  = {
     price_move: '📈', ma200_cross: '📉', ma200w_cross: '🔻',
     drawdown: '⬇️', '52w_high': '🏆', revenue_trend: '📊',
@@ -3884,11 +3885,16 @@
 
   /* ── render one card ─────────────────────────────── */
   function makeCard(alert, firstSeen) {
-    var color = SEV_COLOR[alert.severity] || '#94a3b8';
-    var isNew = (Date.now() - firstSeen) < ONE_HOUR_MS;
+    var color    = SEV_COLOR[alert.severity] || '#94a3b8';
+    var dirColor = DIR_COLOR[alert.direction] || '#64748b';
+    var isNew    = (Date.now() - firstSeen) < ONE_HOUR_MS;
+
+    /* direction-sensitive icon for price_move */
+    var icon = TYPE_ICON[alert.type] || '🔔';
+    if (alert.type === 'price_move') icon = alert.direction === 'up' ? '📈' : '📉';
 
     var div = document.createElement('div');
-    div.className = 'pp-alc sev-' + (alert.severity || 'low') + (isNew ? ' pp-alc-new' : '');
+    div.className = 'pp-alc dir-' + (alert.direction || 'neutral') + (isNew ? ' pp-alc-new' : '');
 
     /* click → dismiss flash immediately */
     div.addEventListener('click', function(e) {
@@ -3906,11 +3912,11 @@
     left.className = 'pp-alc-left';
     var tvUrl = 'https://www.tradingview.com/chart/?symbol=' + encodeURIComponent(alert.symbol || '');
     left.innerHTML =
-      '<span style="font-size:17px">' + (TYPE_ICON[alert.type] || '🔔') + '</span>' +
+      '<span style="font-size:17px">' + icon + '</span>' +
       '<a class="pp-alc-sym" href="' + tvUrl + '" target="_blank" rel="noopener noreferrer">' +
         (alert.symbol || '') +
       '</a>' +
-      '<span class="pp-alc-title" style="color:' + color + '">' + (alert.title || '') + '</span>';
+      '<span class="pp-alc-title" style="color:' + dirColor + '">' + (alert.title || '') + '</span>';
 
     var badge = document.createElement('span');
     badge.className = 'pp-alc-badge';
