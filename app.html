@@ -4801,9 +4801,20 @@
   }
 
   /* ── Main auth flow ───────────────────────────────── */
-  // Build overlay but keep hidden until we confirm OAuth is configured
+  var LOGGED_IN_KEY = 'pp_logged_in';
+  var _wasLoggedIn = false;
+  try { _wasLoggedIn = !!localStorage.getItem(LOGGED_IN_KEY); } catch(e) {}
+
+  // Overlay is visible by default (blocks portfolio content immediately).
+  // Only hide it right away for returning users — their session is verified in the background.
+  // This ensures unauthenticated visitors never see portfolio data.
   var overlay = buildOverlay();
-  overlay.style.display = 'none';
+  if (!_wasLoggedIn) {
+    // First-time / logged-out visitor: overlay stays visible until auth confirmed
+  } else {
+    // Returning user: hide optimistically, show again if session expired
+    overlay.style.display = 'none';
+  }
 
   // Show error from URL param if redirected back with error
   var urlParams = new URLSearchParams(window.location.search);
@@ -4821,8 +4832,6 @@
     }
     window.history.replaceState({}, '', '/');
   }
-
-  var LOGGED_IN_KEY = 'pp_logged_in';
 
   function onAuthenticated(user) {
     overlay.style.display = 'none';
@@ -4853,7 +4862,8 @@
     .then(function (r) { return r.ok ? r.json() : {google: false, apple: false}; })
     .then(function (cfg) {
       if (!cfg.google && !cfg.apple) {
-        // No OAuth configured → run app without auth (dev / unconfigured)
+        // No OAuth configured → dev/unconfigured mode, open access
+        overlay.style.display = 'none';
         return;
       }
 
