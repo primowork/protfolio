@@ -4934,4 +4934,486 @@
 
 })();
 </script>
+
+<style>
+/* =======================================================
+   Feature Patch v20 — Dashboard Header Redesign styles
+   ======================================================= */
+
+@keyframes pp-v20-open-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(52,211,153,.6); }
+  50%       { box-shadow: 0 0 0 5px rgba(52,211,153,0); }
+}
+
+#pp-v20-header {
+  position: sticky;
+  top: 0;
+  z-index: 200;
+  background: hsl(222,20%,7%);
+  border-bottom: 1px solid hsl(222,14%,13%);
+  direction: rtl;
+  user-select: none;
+}
+
+#pp-v20-row1 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 7px 18px;
+  border-bottom: 1px solid hsl(222,14%,10%);
+}
+
+#pp-v20-pill-wrap {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+#pp-v20-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  transition: background .4s;
+}
+#pp-v20-dot.open { animation: pp-v20-open-pulse 2s ease-in-out infinite; }
+
+#pp-v20-pill {
+  font-size: 12px;
+  font-weight: 700;
+  padding: 2px 10px;
+  border-radius: 12px;
+  transition: color .4s, background .4s, border-color .4s;
+}
+
+#pp-v20-nyse {
+  font-size: 11px;
+  font-weight: 600;
+  color: #475569;
+  letter-spacing: .06em;
+}
+
+#pp-v20-timer-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+#pp-v20-prefix {
+  font-size: 11px;
+  color: #475569;
+  direction: rtl;
+}
+
+#pp-v20-timer {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+  font-weight: 700;
+  color: #cbd5e1;
+  letter-spacing: .06em;
+}
+
+#pp-v20-row2 {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 10px 16px 8px;
+  gap: 3px;
+}
+
+#pp-v20-value {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 30px;
+  font-weight: 700;
+  color: #f1f5f9;
+  letter-spacing: -.02em;
+  line-height: 1.1;
+}
+
+#pp-v20-change {
+  font-size: 13px;
+  font-weight: 600;
+  color: #475569;
+  direction: ltr;
+  transition: color .3s;
+}
+
+#pp-v20-row3 {
+  display: flex;
+  border-top: 1px solid hsl(222,14%,10%);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+#pp-v20-row3::-webkit-scrollbar { display: none; }
+
+.pp-v20-tab {
+  flex: 1;
+  min-width: 56px;
+  padding: 9px 4px;
+  font-size: 13px;
+  font-weight: 600;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  color: #64748b;
+  transition: color .15s, border-color .15s;
+  white-space: nowrap;
+  direction: rtl;
+}
+.pp-v20-tab.active {
+  color: #a78bfa;
+  border-bottom-color: #a78bfa;
+}
+.pp-v20-tab.pp-tab-alerts.active {
+  color: #f87171;
+  border-bottom-color: #f87171;
+}
+
+/* hide original React header + nav bar (kept in DOM for delegation) */
+.pp-v20-hidden-react {
+  height: 0 !important;
+  overflow: hidden !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  border: none !important;
+  min-height: 0 !important;
+  visibility: hidden !important;
+}
+
+@media (max-width: 480px) {
+  #pp-v20-value { font-size: 22px; }
+  #pp-v20-row1  { padding: 6px 10px; }
+  #pp-v20-row2  { padding: 8px 10px 6px; }
+  .pp-v20-tab   { font-size: 12px; min-width: 48px; padding: 8px 3px; }
+}
+</style>
+
+<script>
+/* =======================================================
+   Primo Portfolio Feature Patch v20
+   Dashboard Header Redesign — 3-row hierarchy layout
+   ======================================================= */
+(function () {
+  'use strict';
+
+  var HDR_ID = 'pp-v20-header';
+
+  var TABS = [
+    { id: 'דשבורד',   label: 'דשבורד',      alertsTab: false },
+    { id: 'תובנות',   label: 'תובנות',       alertsTab: false },
+    { id: 'עסקאות',   label: 'עסקאות',       alertsTab: false },
+    { id: 'דוחות',    label: 'דוחות',        alertsTab: false },
+    { id: 'הפקדות',   label: 'הפקדות',       alertsTab: false },
+    { id: 'התראות',   label: '🔔 התראות',   alertsTab: true  },
+  ];
+
+  /* ── Market state (mirrors v16 logic) ─────────────── */
+  function pad(n) { return String(n).padStart(2, '0'); }
+
+  function getET() {
+    var parts = {};
+    new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/New_York',
+      weekday: 'short', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false
+    }).formatToParts(new Date()).forEach(function(p) { parts[p.type] = p.value; });
+    var h = parseInt(parts.hour || '0');
+    if (h === 24) h = 0;
+    return { weekday: parts.weekday, h: h, m: parseInt(parts.minute || '0'), s: parseInt(parts.second || '0') };
+  }
+
+  function computeMarket() {
+    var et = getET();
+    var tm = et.h * 60 + et.m;
+    var isWeekday = ['Mon','Tue','Wed','Thu','Fri'].indexOf(et.weekday) !== -1;
+    var state, color, heState, prefix, tH, tM, extraDays = 0;
+
+    if (!isWeekday) {
+      state='CLOSED'; color='#f87171'; heState='סגור';      prefix='פתיחה בעוד'; tH=9; tM=30;
+      extraDays = et.weekday === 'Sat' ? 2 : 1;
+    } else if (tm < 240) {
+      state='CLOSED'; color='#f87171'; heState='סגור';      prefix='פתיחה בעוד'; tH=9; tM=30;
+    } else if (tm < 570) {
+      state='PRE';    color='#fbbf24'; heState='פרה-מרקט';  prefix='פתיחה בעוד'; tH=9; tM=30;
+    } else if (tm < 960) {
+      state='OPEN';   color='#34d399'; heState='פתוח';      prefix='סגירה בעוד'; tH=16; tM=0;
+    } else if (tm < 1200) {
+      state='POST';   color='#fbbf24'; heState='אחרי שעות'; prefix='סיום בעוד';  tH=20; tM=0;
+    } else {
+      state='CLOSED'; color='#f87171'; heState='סגור';      prefix='פתיחה בעוד'; tH=9; tM=30;
+    }
+
+    var secNow    = et.h * 3600 + et.m * 60 + et.s;
+    var secTarget = tH * 3600 + tM * 60;
+    var diff = secTarget - secNow + extraDays * 86400;
+    if (diff < 0) diff += 86400;
+
+    return {
+      state:    state,
+      color:    color,
+      heState:  heState,
+      prefix:   prefix,
+      countdown: pad(Math.floor(diff / 3600)) + ':' + pad(Math.floor((diff % 3600) / 60)) + ':' + pad(diff % 60)
+    };
+  }
+
+  /* ── Portfolio value ────────────────────────────────── */
+  function computePortfolio() {
+    try {
+      var raw = localStorage.getItem('primo_portfolio_v6');
+      if (!raw) return { total: null, daily: null, pct: null };
+      var state = JSON.parse(raw);
+      var net = {};
+      (state.transactions || []).forEach(function(t) {
+        var sym = ((t.ticker || t.symbol || '')).toUpperCase();
+        if (!sym) return;
+        var sh = parseFloat(t.shares) || 0;
+        net[sym] = (net[sym] || 0) + (t.type === 'sell' ? -sh : sh);
+      });
+      var prices = state.prices || {};
+      var prevClose = {};
+      try { prevClose = JSON.parse(localStorage.getItem('primo_prevclose_v1') || '{}'); } catch(e) {}
+
+      var total = 0, daily = 0, hasPrev = false;
+      Object.keys(net).forEach(function(sym) {
+        var ns = net[sym];
+        var p  = prices[sym];
+        if (!p || !ns) return;
+        total += ns * p;
+        var pc = prevClose[sym];
+        if (pc) { daily += ns * (p - pc); hasPrev = true; }
+      });
+
+      var pct = (hasPrev && (total - daily) > 0) ? daily / (total - daily) * 100 : null;
+      return { total: total > 0 ? total : null, daily: hasPrev ? daily : null, pct: pct };
+    } catch(e) {
+      return { total: null, daily: null, pct: null };
+    }
+  }
+
+  function fmtMoney(v) {
+    return '$' + Math.abs(v).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  }
+
+  /* ── Active tab detection ───────────────────────────── */
+  function getActiveReactLabel() {
+    /* alerts panel visible? */
+    var alertsOverlay = document.getElementById('pp-alerts-overlay');
+    if (alertsOverlay && alertsOverlay.classList.contains('pp-alerts-active')) return '🔔 התראות';
+
+    var found = null;
+    document.querySelectorAll('button').forEach(function(b) {
+      if (b.id === 'pp-v20-header' || b.closest('#pp-v20-header')) return;
+      var lbl = b.textContent.trim();
+      if (lbl && b.className && b.className.indexOf('border-violet-500') !== -1) found = lbl;
+    });
+    return found;
+  }
+
+  /* ── Delegate click to React/v19 nav ───────────────── */
+  function clickTab(tab) {
+    if (tab.alertsTab) {
+      /* try v19 button first */
+      var alertsBtn = document.getElementById('pp-alerts-navbtn');
+      if (alertsBtn) { alertsBtn.click(); return; }
+    }
+    /* find matching React button outside our header */
+    document.querySelectorAll('button').forEach(function(b) {
+      if (b.closest && b.closest('#pp-v20-header')) return;
+      if (b.textContent.trim() === tab.id) b.click();
+    });
+  }
+
+  /* ── Build DOM ──────────────────────────────────────── */
+  function buildHeader() {
+    var hdr = document.createElement('div');
+    hdr.id = HDR_ID;
+
+    /* Row 1 */
+    var row1 = document.createElement('div');
+    row1.id = 'pp-v20-row1';
+
+    var pillWrap = document.createElement('div');
+    pillWrap.id = 'pp-v20-pill-wrap';
+    pillWrap.innerHTML =
+      '<span id="pp-v20-dot"></span>' +
+      '<span id="pp-v20-pill"></span>' +
+      '<span id="pp-v20-nyse">NYSE</span>';
+
+    var timerWrap = document.createElement('div');
+    timerWrap.id = 'pp-v20-timer-wrap';
+    timerWrap.innerHTML =
+      '<span id="pp-v20-prefix"></span>' +
+      '<span id="pp-v20-timer"></span>';
+
+    row1.appendChild(pillWrap);
+    row1.appendChild(timerWrap);
+    hdr.appendChild(row1);
+
+    /* Row 2 */
+    var row2 = document.createElement('div');
+    row2.id = 'pp-v20-row2';
+    row2.innerHTML =
+      '<div id="pp-v20-value">טוען...</div>' +
+      '<div id="pp-v20-change"></div>';
+    hdr.appendChild(row2);
+
+    /* Row 3 */
+    var row3 = document.createElement('div');
+    row3.id = 'pp-v20-row3';
+
+    var btns = {};
+    TABS.forEach(function(t) {
+      var btn = document.createElement('button');
+      btn.className = 'pp-v20-tab' + (t.alertsTab ? ' pp-tab-alerts' : '');
+      btn.textContent = t.label;
+      btn.addEventListener('click', function() {
+        clickTab(t);
+        setTimeout(syncAll, 80);
+      });
+      row3.appendChild(btn);
+      btns[t.id] = btn;
+    });
+    hdr.appendChild(row3);
+
+    hdr._btns = btns;
+    return hdr;
+  }
+
+  /* ── Sync market row ────────────────────────────────── */
+  function syncMarket() {
+    var mkt = computeMarket();
+    var dot  = document.getElementById('pp-v20-dot');
+    var pill = document.getElementById('pp-v20-pill');
+    var pfx  = document.getElementById('pp-v20-prefix');
+    var tmr  = document.getElementById('pp-v20-timer');
+    if (!dot) return;
+
+    dot.style.background = mkt.color;
+    if (mkt.state === 'OPEN') {
+      dot.classList.add('open');
+    } else {
+      dot.classList.remove('open');
+      dot.style.boxShadow = 'none';
+    }
+
+    if (pill) {
+      pill.textContent = mkt.heState;
+      pill.style.cssText =
+        'font-size:12px;font-weight:700;padding:2px 10px;border-radius:12px;' +
+        'color:' + mkt.color + ';background:' + mkt.color + '22;border:1px solid ' + mkt.color + '44;';
+    }
+    if (pfx) pfx.textContent = mkt.prefix;
+    if (tmr) tmr.textContent = mkt.countdown;
+  }
+
+  /* ── Sync portfolio value row ───────────────────────── */
+  function syncValue() {
+    var pf  = computePortfolio();
+    var vel = document.getElementById('pp-v20-value');
+    var cel = document.getElementById('pp-v20-change');
+    if (!vel) return;
+
+    vel.textContent = pf.total != null ? fmtMoney(pf.total) : '—';
+
+    if (cel) {
+      if (pf.daily != null && pf.pct != null) {
+        var sign = pf.daily >= 0 ? '+' : '-';
+        cel.textContent = sign + fmtMoney(pf.daily) + '  (' + (pf.daily >= 0 ? '+' : '') + pf.pct.toFixed(2) + '%)  היום';
+        cel.style.color = pf.daily >= 0 ? '#34d399' : '#f87171';
+      } else {
+        cel.textContent = '';
+      }
+    }
+  }
+
+  /* ── Sync nav tabs ──────────────────────────────────── */
+  function syncTabs() {
+    var hdr = document.getElementById(HDR_ID);
+    if (!hdr || !hdr._btns) return;
+    var activeLabel = getActiveReactLabel();
+    TABS.forEach(function(t) {
+      var btn = hdr._btns[t.id];
+      if (!btn) return;
+      var isActive = (t.label === activeLabel) || (!activeLabel && t.id === 'דשבורד');
+      if (isActive) btn.classList.add('active');
+      else           btn.classList.remove('active');
+    });
+  }
+
+  function syncAll() {
+    syncMarket();
+    syncValue();
+    syncTabs();
+  }
+
+  /* ── Inject ─────────────────────────────────────────── */
+  var _injected = false;
+
+  function inject() {
+    if (document.getElementById(HDR_ID)) { _injected = true; return true; }
+
+    /* React must have rendered nav tabs first */
+    var dashBtn = null;
+    document.querySelectorAll('button').forEach(function(b) {
+      if (b.textContent.trim() === 'דשבורד' && !b.closest('#pp-v20-header')) dashBtn = b;
+    });
+    if (!dashBtn) return false;
+
+    /* Find and hide the React header + nav bar */
+    var reactHeader = document.querySelector('header');
+    var navBar = dashBtn.parentElement;
+
+    if (reactHeader) {
+      reactHeader.classList.add('pp-v20-hidden-react');
+      reactHeader.id = reactHeader.id || 'pp-v20-react-hdr';
+    }
+    if (navBar) {
+      navBar.classList.add('pp-v20-hidden-react');
+    }
+
+    /* Build and inject our header */
+    var hdr = buildHeader();
+    var insertBefore = reactHeader || navBar;
+    if (insertBefore && insertBefore.parentNode) {
+      insertBefore.parentNode.insertBefore(hdr, insertBefore);
+    } else {
+      document.body.prepend(hdr);
+    }
+
+    syncAll();
+    _injected = true;
+    return true;
+  }
+
+  /* ── Boot ───────────────────────────────────────────── */
+  var _deb20 = null;
+  var obs20 = new MutationObserver(function() {
+    clearTimeout(_deb20);
+    _deb20 = setTimeout(function() {
+      if (!_injected) { inject(); return; }
+      syncAll();
+    }, 150);
+  });
+  obs20.observe(document.body, { childList: true, subtree: true });
+
+  /* 1-second tick for market clock */
+  setInterval(syncMarket, 1000);
+
+  /* sync value on localStorage changes (price updates) */
+  window.addEventListener('storage', function(e) {
+    if (e.key === 'primo_portfolio_v6' || e.key === 'primo_prevclose_v1') syncValue();
+  });
+
+  setTimeout(function() {
+    if (!inject()) {
+      /* retry until React renders */
+      var _retryTimer = setInterval(function() {
+        if (inject()) clearInterval(_retryTimer);
+      }, 500);
+    }
+  }, 1500);
+
+})();
+</script>
 </body></html>
