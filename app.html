@@ -2835,6 +2835,11 @@
     max-height: none !important;
     overflow-y: visible !important;
   }
+
+  /* prevent tab-switch scroll jumps: keep the content area tall enough */
+  main, [role="main"], #root > div > div {
+    min-height: 80vh;
+  }
 </style>
 
 <script>
@@ -4990,9 +4995,6 @@
   --v20-green:   #34d399;
   --v20-amber:   #fbbf24;
 
-  position: sticky;
-  top: 0;
-  z-index: 200;
   background: var(--v20-bg);
   border-bottom: 1px solid var(--v20-border);
   direction: rtl;
@@ -5248,8 +5250,13 @@ body:not(:has(#pp-v21-chart-card)) #pp-v20-portfolio {
   gap: 8px;
   padding: 10px 24px;
   border-top: 1px solid var(--v20-border);
+  border-bottom: 1px solid var(--v20-border);
   overflow-x: auto;
   scrollbar-width: none;
+  position: sticky;
+  top: 0;
+  z-index: 200;
+  background: var(--v20-bg, #0e0f11);
 }
 #pp-v20-nav::-webkit-scrollbar { display: none; }
 
@@ -5460,13 +5467,20 @@ body:not(:has(#pp-v21-chart-card)) #pp-v20-portfolio {
   }
 
   function clickTab(tab) {
+    /* preserve scroll so the sticky nav stays in place after React re-renders */
+    var savedY = window.scrollY;
     if (tab.alertsTab) {
       var alertsBtn = document.getElementById('pp-alerts-navbtn');
-      if (alertsBtn) { alertsBtn.click(); return; }
+      if (alertsBtn) { alertsBtn.click(); }
+    } else {
+      document.querySelectorAll('button').forEach(function(b) {
+        if (b.closest && b.closest('#pp-v20-wrapper')) return;
+        if (b.textContent.trim() === tab.id) b.click();
+      });
     }
-    document.querySelectorAll('button').forEach(function(b) {
-      if (b.closest && b.closest('#pp-v20-header')) return;
-      if (b.textContent.trim() === tab.id) b.click();
+    /* restore after React has settled */
+    requestAnimationFrame(function() {
+      window.scrollTo({ top: savedY, behavior: 'instant' });
     });
   }
 
@@ -5497,6 +5511,10 @@ body:not(:has(#pp-v21-chart-card)) #pp-v20-portfolio {
 
   /* ── Build header DOM ──────────────────────────────── */
   function buildHeader() {
+    /* wrapper holds the scrolling header + the sticky nav as siblings */
+    var wrapper = document.createElement('div');
+    wrapper.id = 'pp-v20-wrapper';
+
     var hdr = document.createElement('div');
     hdr.id = HDR_ID;
 
@@ -5585,7 +5603,7 @@ body:not(:has(#pp-v21-chart-card)) #pp-v20-portfolio {
       nav.appendChild(btn);
       btns[t.id] = btn;
     });
-    hdr.appendChild(nav);
+    /* nav is a SIBLING of hdr inside wrapper, so it can be sticky independently */
     hdr._btns = btns;
 
     /* refresh click */
@@ -5596,7 +5614,9 @@ body:not(:has(#pp-v21-chart-card)) #pp-v20-portfolio {
       setTimeout(function() { self.classList.remove('spinning'); }, 1200);
     });
 
-    return hdr;
+    wrapper.appendChild(hdr);
+    wrapper.appendChild(nav);
+    return wrapper;
   }
 
   /* ── Sync functions ────────────────────────────────── */
@@ -5690,10 +5710,10 @@ body:not(:has(#pp-v21-chart-card)) #pp-v20-portfolio {
     if (reactHeader) reactHeader.classList.add('pp-v20-hidden-react');
     if (navBar)      navBar.classList.add('pp-v20-hidden-react');
 
-    var hdr = buildHeader();
+    var wrapper = buildHeader();
     var anchor = reactHeader || navBar;
-    if (anchor && anchor.parentNode) anchor.parentNode.insertBefore(hdr, anchor);
-    else document.body.prepend(hdr);
+    if (anchor && anchor.parentNode) anchor.parentNode.insertBefore(wrapper, anchor);
+    else document.body.prepend(wrapper);
 
     syncAll();
     fetchFx();
@@ -5742,10 +5762,70 @@ body:not(:has(#pp-v21-chart-card)) #pp-v20-portfolio {
   border: none;
   border-top: 1px solid rgba(255,255,255,0.07);
   border-radius: 0;
-  padding: 14px 24px 12px;
+  padding: 10px 24px 8px;
   direction: rtl;
   font-family: 'DM Sans', ui-sans-serif, system-ui, sans-serif;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  align-items: stretch;
 }
+#pp-v21-chart-main { min-width: 0; display: flex; flex-direction: column; }
+#pp-v21-stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  align-content: center;
+}
+.pp-v21-stat {
+  position: relative;
+  background: hsl(222,16%,8%);
+  border: 1px solid rgba(255,255,255,0.05);
+  border-radius: 10px;
+  padding: 16px 18px 14px;
+  overflow: hidden;
+  min-height: 92px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+.pp-v21-stat::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  background: var(--pp-stat-bar, #34d399);
+}
+.pp-v21-stat-label {
+  font-size: 12px;
+  color: #7a7f8a;
+  letter-spacing: 0.3px;
+  font-weight: 400;
+  margin-bottom: 6px;
+}
+.pp-v21-stat-value {
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-size: 22px;
+  font-weight: 500;
+  color: #f0f1f3;
+  letter-spacing: -0.4px;
+  line-height: 1.1;
+}
+.pp-v21-stat-sub {
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-size: 11px;
+  color: #7a7f8a;
+  margin-top: 4px;
+}
+.pp-v21-stat.up .pp-v21-stat-value { color: #34d399; }
+.pp-v21-stat.down .pp-v21-stat-value { color: #f87171; }
+.pp-v21-stat-total { --pp-stat-bar: #34d399; }
+.pp-v21-stat-realized { --pp-stat-bar: #f59e0b; }
+.pp-v21-stat-unrealized { --pp-stat-bar: #34d399; }
+.pp-v21-stat-portvalue {
+  --pp-stat-bar: linear-gradient(90deg, #a855f7, #ec4899, #3b82f6);
+}
+.pp-v21-stat-portvalue::before { background: var(--pp-stat-bar); }
 #pp-v21-chart-top {
   display: flex;
   align-items: flex-start;
@@ -5830,8 +5910,8 @@ body:not(:has(#pp-v21-chart-card)) #pp-v20-portfolio {
 
 #pp-v21-chart-wrap {
   position: relative;
-  height: 320px;
-  margin: 18px 0 10px;
+  height: 180px;
+  margin: 12px 0 8px;
   overflow: hidden;
 }
 #pp-v21-chart-svg {
@@ -5882,11 +5962,17 @@ body:not(:has(#pp-v21-chart-card)) #pp-v20-portfolio {
   color: #f0f1f3;
 }
 
+@media (max-width: 900px) {
+  #pp-v21-chart-card { grid-template-columns: 1fr; gap: 14px; }
+  #pp-v21-stats { grid-template-columns: 1fr 1fr; }
+}
 @media (max-width: 640px) {
   #pp-v21-chart-card { margin: 8px; padding: 14px 14px 10px; border-radius: 10px; }
   #pp-v21-tw-value { font-size: 26px; }
   #pp-v21-chart-wrap { height: 200px; }
   .pp-v21-range { padding: 6px 10px; font-size: 11px; }
+  .pp-v21-stat-value { font-size: 18px; }
+  .pp-v21-stat { padding: 12px 14px; min-height: 78px; }
 }
 </style>
 
@@ -6085,9 +6171,116 @@ body:not(:has(#pp-v21-chart-card)) #pp-v20-portfolio {
     }
   }
 
+  function computeStats() {
+    try {
+      var raw = localStorage.getItem('primo_portfolio_v6');
+      if (!raw) return null;
+      var state = JSON.parse(raw);
+      var prices = state.prices || {};
+      var holdings = {};
+      var realizedBySym = {};
+
+      (state.transactions || []).forEach(function(t) {
+        var sym = (t.ticker || t.symbol || '').toUpperCase();
+        if (!sym) return;
+        var sh = parseFloat(t.shares) || 0;
+        var pr = parseFloat(t.price) || 0;
+        var fee = parseFloat(t.fee) || 0;
+        if (!holdings[sym]) holdings[sym] = { shares: 0, cost: 0 };
+        if (!realizedBySym[sym]) realizedBySym[sym] = 0;
+        if (t.type === 'sell') {
+          var avg = holdings[sym].shares > 0 ? holdings[sym].cost / holdings[sym].shares : pr;
+          realizedBySym[sym] += (pr - avg) * sh - fee;
+          holdings[sym].cost -= avg * sh;
+          holdings[sym].shares -= sh;
+        } else {
+          holdings[sym].cost += pr * sh + fee;
+          holdings[sym].shares += sh;
+        }
+      });
+
+      var totalValue = 0, totalCost = 0, totalRealized = 0;
+      Object.keys(holdings).forEach(function(sym) {
+        var h = holdings[sym];
+        if (h.shares <= 0) return;
+        var p = prices[sym];
+        if (!p) return;
+        totalValue += h.shares * p;
+        totalCost  += h.cost;
+      });
+      Object.keys(realizedBySym).forEach(function(sym) {
+        totalRealized += realizedBySym[sym];
+      });
+      var unrealized = totalValue - totalCost;
+      var totalGain  = unrealized + totalRealized;
+      var unrealizedPct = totalCost > 0 ? (unrealized / totalCost * 100) : null;
+      var totalGainPct  = totalCost > 0 ? (totalGain  / totalCost * 100) : null;
+      return {
+        totalValue: totalValue,
+        totalCost: totalCost,
+        realized: totalRealized,
+        unrealized: unrealized,
+        totalGain: totalGain,
+        unrealizedPct: unrealizedPct,
+        totalGainPct: totalGainPct
+      };
+    } catch(e) { return null; }
+  }
+
+  function fmtSigned(v, curr) {
+    if (v == null || isNaN(v)) return '—';
+    var sign = v >= 0 ? '+' : '-';
+    return sign + fmtMoney(v, curr);
+  }
+  function fmtPct(v) {
+    if (v == null || isNaN(v)) return '';
+    var sign = v >= 0 ? '+' : '';
+    return sign + v.toFixed(2) + '%';
+  }
+
+  function renderStats() {
+    var s = computeStats();
+    var cards = {
+      total:      document.getElementById('pp-v21-stat-total'),
+      realized:   document.getElementById('pp-v21-stat-realized'),
+      unrealized: document.getElementById('pp-v21-stat-unrealized'),
+      portvalue:  document.getElementById('pp-v21-stat-portvalue')
+    };
+    if (!cards.total) return;
+    if (!s) {
+      ['total','realized','unrealized','portvalue'].forEach(function(k){
+        var c = cards[k];
+        if (!c) return;
+        c.querySelector('.pp-v21-stat-value').textContent = '—';
+        c.querySelector('.pp-v21-stat-sub').textContent = '';
+        c.classList.remove('up','down');
+      });
+      return;
+    }
+
+    function setCard(el, value, sub, signable) {
+      if (!el) return;
+      el.querySelector('.pp-v21-stat-value').textContent = value;
+      el.querySelector('.pp-v21-stat-sub').textContent = sub || '';
+      el.classList.remove('up','down');
+      if (signable != null) {
+        if (signable > 0) el.classList.add('up');
+        else if (signable < 0) el.classList.add('down');
+      }
+    }
+
+    setCard(cards.total,      fmtSigned(s.totalGain, _currency),  fmtPct(s.totalGainPct), s.totalGain);
+    setCard(cards.realized,   fmtSigned(s.realized,  _currency),  '',                      s.realized);
+    setCard(cards.unrealized, fmtSigned(s.unrealized,_currency), fmtPct(s.unrealizedPct), s.unrealized);
+    var sub = '';
+    if (_fxRate) sub = '₪' + (s.totalValue * _fxRate).toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    setCard(cards.portvalue,  fmtMoney(s.totalValue, _currency), sub, null);
+  }
+
   function render() {
     renderTopLine();
     renderChart();
+    renderStats();
   }
 
   /* ── find dashboard container ────────────────────── */
@@ -6105,24 +6298,48 @@ body:not(:has(#pp-v21-chart-card)) #pp-v20-portfolio {
     var card = document.createElement('div');
     card.id = CARD_ID;
     card.innerHTML =
-      '<div id="pp-v21-chart-top">' +
-        '<div>' +
-          '<div class="pp-v21-tw-label">שווי תיק</div>' +
-          '<div id="pp-v21-tw-value">—</div>' +
-          '<div id="pp-v21-tw-change">' +
-            '<span id="pp-v21-tw-amt"></span>' +
-            '<span id="pp-v21-tw-pct"></span>' +
+      '<div id="pp-v21-chart-main">' +
+        '<div id="pp-v21-chart-top">' +
+          '<div>' +
+            '<div class="pp-v21-tw-label">שווי תיק</div>' +
+            '<div id="pp-v21-tw-value">—</div>' +
+            '<div id="pp-v21-tw-change">' +
+              '<span id="pp-v21-tw-amt"></span>' +
+              '<span id="pp-v21-tw-pct"></span>' +
+            '</div>' +
           '</div>' +
+          '<div id="pp-v21-currency" title="לחץ כדי להחליף מטבע">' + _currency + '</div>' +
         '</div>' +
-        '<div id="pp-v21-currency" title="לחץ כדי להחליף מטבע">' + _currency + '</div>' +
+        '<div id="pp-v21-chart-wrap">' +
+          '<div class="pp-v21-axis-label" id="pp-v21-axis-hi"></div>' +
+          '<div class="pp-v21-axis-label" id="pp-v21-axis-lo"></div>' +
+          '<svg id="pp-v21-chart-svg" preserveAspectRatio="none"></svg>' +
+          '<div id="pp-v21-chart-empty">טוען...</div>' +
+        '</div>' +
+        '<div id="pp-v21-ranges"></div>' +
       '</div>' +
-      '<div id="pp-v21-chart-wrap">' +
-        '<div class="pp-v21-axis-label" id="pp-v21-axis-hi"></div>' +
-        '<div class="pp-v21-axis-label" id="pp-v21-axis-lo"></div>' +
-        '<svg id="pp-v21-chart-svg" preserveAspectRatio="none"></svg>' +
-        '<div id="pp-v21-chart-empty">טוען...</div>' +
-      '</div>' +
-      '<div id="pp-v21-ranges"></div>';
+      '<div id="pp-v21-stats">' +
+        '<div class="pp-v21-stat pp-v21-stat-total" id="pp-v21-stat-total">' +
+          '<div class="pp-v21-stat-label">רווח כולל</div>' +
+          '<div class="pp-v21-stat-value">—</div>' +
+          '<div class="pp-v21-stat-sub"></div>' +
+        '</div>' +
+        '<div class="pp-v21-stat pp-v21-stat-realized" id="pp-v21-stat-realized">' +
+          '<div class="pp-v21-stat-label">רווח ממומש</div>' +
+          '<div class="pp-v21-stat-value">—</div>' +
+          '<div class="pp-v21-stat-sub"></div>' +
+        '</div>' +
+        '<div class="pp-v21-stat pp-v21-stat-unrealized" id="pp-v21-stat-unrealized">' +
+          '<div class="pp-v21-stat-label">רווח לא ממומש</div>' +
+          '<div class="pp-v21-stat-value">—</div>' +
+          '<div class="pp-v21-stat-sub"></div>' +
+        '</div>' +
+        '<div class="pp-v21-stat pp-v21-stat-portvalue" id="pp-v21-stat-portvalue">' +
+          '<div class="pp-v21-stat-label">ערך תיק</div>' +
+          '<div class="pp-v21-stat-value">—</div>' +
+          '<div class="pp-v21-stat-sub"></div>' +
+        '</div>' +
+      '</div>';
 
     /* range buttons */
     var rangesEl = card.querySelector('#pp-v21-ranges');
@@ -6205,6 +6422,10 @@ body:not(:has(#pp-v21-chart-card)) #pp-v20-portfolio {
     if (e.key === 'primo_portfolio_v6' && _injected) {
       /* shares may have changed → re-fetch */
       fetchHistory();
+      renderStats();
+    }
+    if (e.key === 'primo_prevclose_v1' && _injected) {
+      renderStats();
     }
     if (e.key === 'pp_v21_currency') {
       _currency = e.newValue === 'ILS' ? 'ILS' : 'USD';
@@ -6212,6 +6433,29 @@ body:not(:has(#pp-v21-chart-card)) #pp-v20-portfolio {
       render();
     }
   });
+
+  /* hide the duplicate React-rendered stats row once it appears */
+  function hideReactStatCards() {
+    var labels = ['רווח כולל', 'רווח ממומש', 'רווח לא ממומש', 'ערך תיק'];
+    var candidates = document.querySelectorAll('div, section');
+    var best = null;
+    candidates.forEach(function(el) {
+      if (el.closest && el.closest('#pp-v21-chart-card')) return;
+      if (el.dataset && el.dataset.ppHidden) return;
+      var txt = el.textContent || '';
+      var matched = 0;
+      labels.forEach(function(l) { if (txt.indexOf(l) !== -1) matched++; });
+      if (matched < 4) return;
+      if (el.children.length < 3 || el.children.length > 8) return;
+      /* prefer the deepest match — no descendant that also contains all 4 */
+      if (!best || best.contains(el)) best = el;
+    });
+    if (best) {
+      best.dataset.ppHidden = '1';
+      best.style.display = 'none';
+    }
+  }
+  setInterval(hideReactStatCards, 800);
 
   /* start after v20 header is guaranteed to exist (v20 injects at ~1500ms) */
   setTimeout(function() {
