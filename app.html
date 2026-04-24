@@ -2301,7 +2301,7 @@
       var val = 'TTM ' + (d.ttmGrowth >= 0 ? '+' : '') + d.ttmGrowth + '% | CAGR ' + (d.cagr >= 0 ? '+' : '') + d.cagr + '%';
       return { sym: s, pass: pass, val: val, fin: isFin(s) };
     }).filter(Boolean).sort(function(a,b){ return b.pass-a.pass; });
-    if (f7.length) panel.appendChild(makeFilter(6,'מגמת צמיחה','TTM Revenue ≥ 70% of 3yr CAGR','האצה/האטה — האם הצמיחה (4 רבעונים אחרונים vs שנה קודמת) האיצה או האטה?','📉',f7));
+    panel.appendChild(makeFilter(6,'מגמת צמיחה','TTM Revenue ≥ 70% of 3yr CAGR','האצה/האטה — האם הצמיחה (4 רבעונים אחרונים vs שנה קודמת) האיצה או האטה?','📉',f7));
 
     /* ── Multiple Compression Risk ──────────────── */
     (function() {
