@@ -2174,6 +2174,33 @@
       return isREIT(sym) ? W_REIT : (isFin(sym) ? W_FIN : W_TECH);
     }
 
+    var REC_PLAIN = {
+      tech: [
+        { t: 'החברה גדלה בקצב גבוה',             f: 'הצמיחה איטית מדי לחברת טק' },
+        { t: 'המחיר הגיוני ביחס למה שהיא שווה',  f: 'יקרה מאוד — משלמים פרמיה גדולה' },
+        { t: 'מרוויחה טוב על כל שקל שמכניסה',    f: 'שולי הרווח לא מרשימים' },
+        { t: 'חוב נמוך — יציבה גם בימים קשים',   f: 'חוב גבוה — מסוכנת אם הריבית עולה' },
+        { t: 'השוק מאמין בה ודוחף אותה מעלה',    f: 'השוק לוחץ אותה למטה כרגע' },
+        { t: 'קצב הצמיחה אפילו האיץ לאחרונה',    f: 'קצב הצמיחה מאט לאחרונה' }
+      ],
+      fin: [
+        { t: 'מנצלת טוב את כסף בעלי המניות',     f: 'לא מנצלת את ההון מספיק' },
+        { t: 'המחיר הגיוני ביחס לנכסים שיש לה',  f: 'יקרה ביחס לנכסים שיש לה' },
+        { t: 'מחלקת דיבידנד נדיב בכל שנה',        f: 'הדיבידנד נמוך ביחס לחברות דומות' },
+        { t: 'כל שקל נכסים מייצר תשואה טובה',    f: 'הנכסים לא עובדים מספיק קשה' },
+        { t: 'השוק דוחף אותה מעלה כרגע',          f: 'השוק לוחץ אותה למטה כרגע' },
+        { t: 'הצמיחה האחרונה האיצה',              f: 'קצב הצמיחה מאט' }
+      ],
+      reit: [
+        { t: 'הנכס מכניס יותר כסף מאשתקד',                   f: 'הנכס מכניס פחות כסף מאשתקד' },
+        { t: 'המחיר הגיוני ביחס לנכסים',                     f: 'יקרה ביחס לנכסים שיש לה' },
+        { t: 'מחלקת דיבידנד נדיב — בשביל זה קונים נדל"ן',   f: 'הדיבידנד נמוך לנדל"ן' },
+        { t: 'הנכסים מייצרים תשואה טובה',                   f: 'הנכסים לא מספיק יעילים' },
+        { t: 'השוק דוחף אותה מעלה כרגע',                    f: 'השוק לוחץ אותה למטה כרגע' },
+        { t: 'קצב הצמיחה אפילו האיץ לאחרונה',               f: 'קצב הצמיחה מאט' }
+      ]
+    };
+
     function makeRecommendation(sym, passes, total, filterSlots) {
       if (!total) return null;
       var w = recWeights(sym);
@@ -2190,33 +2217,35 @@
       else if (pct >= 0.42) { action = 'החזק'; ac = '#fbbf24'; bg = '#2d200a'; }
       else                  { action = 'מכור'; ac = '#f87171'; bg = '#2d0d0d'; }
 
-      /* build summary — sort by weight desc so most important filters lead */
-      var names = filterNames(sym);
+      var cat = isREIT(sym) ? 'reit' : (isFin(sym) ? 'fin' : 'tech');
+      var plain = REC_PLAIN[cat];
       var passing = [], failing = [];
       filterSlots.forEach(function(f, i) {
-        if (!f) return;
-        var n = (names[i] || '').replace(/[\u{1F300}-\u{1FFFF}\u{2600}-\u{26FF}]\s*/gu, '').trim();
-        (f.pass ? passing : failing).push({ n: n, w: w[i] });
+        if (!f || !plain[i]) return;
+        (f.pass ? passing : failing).push({ txt: plain[i][f.pass ? 't' : 'f'], w: w[i] });
       });
       passing.sort(function(a,b){ return b.w - a.w; });
       failing.sort(function(a,b){ return b.w - a.w; });
-      var pNames = passing.map(function(x){ return x.n; });
-      var fNames = failing.map(function(x){ return x.n; });
 
-      var summary;
+      function lc(s) { return s.charAt(0).toLowerCase() + s.slice(1); }
+
+      var line1, line2;
       if (action === 'קנה') {
-        summary = 'חוזקות: ' + pNames.slice(0,3).join(', ');
-        if (fNames.length) summary += ' · חולשה: ' + fNames.slice(0,2).join(', ');
+        line1 = passing.slice(0,2).map(function(x){ return x.txt; }).join(', ') + '.';
+        line2 = failing.length
+          ? failing[0].txt + (failing[1] ? ', ו' + lc(failing[1].txt) : '') + ' — אבל החוזקות גוברות.'
+          : 'כמעט ללא חולשות — עסק חזק.';
       } else if (action === 'החזק') {
-        var parts = [];
-        if (pNames.length) parts.push('חיובי: ' + pNames.slice(0,2).join(', '));
-        if (fNames.length) parts.push('שלילי: ' + fNames.slice(0,2).join(', '));
-        summary = parts.join(' · ');
+        line1 = (passing.length ? passing[0].txt : 'יש נקודות טובות') +
+                (failing.length ? ', אבל ' + lc(failing[0].txt) : '') + '.';
+        line2 = (failing[1] ? failing[1].txt + '. ' : '') + 'שמור, אל תוסיף עכשיו.';
       } else {
-        summary = 'בעיות: ' + fNames.slice(0,3).join(', ');
-        if (pNames.length) summary += ' · חיובי: ' + pNames.slice(0,2).join(', ');
+        line1 = failing.slice(0,2).map(function(x){ return x.txt; }).join(', ') + '.';
+        line2 = passing.length
+          ? 'יש נקודה טובה — ' + lc(passing[0].txt) + ', אבל זה לא מספיק.'
+          : 'קשה למצוא כאן סיבה טובה להחזיק.';
       }
-      return { action: action, ac: ac, bg: bg, summary: summary };
+      return { action: action, ac: ac, bg: bg, line1: line1, line2: line2 };
     }
 
     syms.forEach(function(s) { scores[s] = { passes: 0, total: 0, filters: [null,null,null,null,null,null] }; });
@@ -2605,10 +2634,10 @@
         var rec = makeRecommendation(s, sc ? sc.passes : 0, sc ? sc.total : 0, filterSlots);
         if (rec) {
           var recBar = document.createElement('div');
-          recBar.style.cssText = 'display:flex;align-items:center;gap:10px;margin-top:10px;padding:8px 10px;border-radius:5px;background:' + rec.bg + ';border:1px solid ' + rec.ac + '33;direction:rtl;';
+          recBar.style.cssText = 'display:flex;align-items:flex-start;gap:10px;margin-top:10px;padding:9px 10px;border-radius:5px;background:' + rec.bg + ';border:1px solid ' + rec.ac + '33;direction:rtl;';
           recBar.innerHTML =
-            '<span style="font-size:14px;font-weight:800;color:' + rec.ac + ';min-width:42px;text-align:center;padding:2px 8px;border-radius:4px;background:' + rec.ac + '22;border:1px solid ' + rec.ac + '55;">' + rec.action + '</span>' +
-            '<span style="font-size:12px;color:#cbd5e1;">' + rec.summary + '</span>';
+            '<span style="font-size:14px;font-weight:800;color:' + rec.ac + ';min-width:42px;text-align:center;padding:2px 8px;border-radius:4px;background:' + rec.ac + '22;border:1px solid ' + rec.ac + '55;flex-shrink:0;margin-top:1px;">' + rec.action + '</span>' +
+            '<span style="font-size:12px;color:#cbd5e1;line-height:1.55;">' + rec.line1 + '<br><span style="color:#94a3b8;">' + rec.line2 + '</span></span>';
           detail.appendChild(recBar);
         }
 
