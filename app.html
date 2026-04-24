@@ -2072,6 +2072,41 @@
     var FILTER_NAMES_TECH = ['📈 צמיחה','💰 תמחור','💎 איכות','🛡️ סיכון','🚀 מומנטום','📉 מגמה'];
     var FILTER_NAMES_FIN  = ['📈 ROE',  '💰 P/B',  '💎 דיבידנד','🛡️ ROA',   '🚀 מומנטום','📉 מגמה'];
     function filterNames(sym) { return isFin(sym) ? FILTER_NAMES_FIN : FILTER_NAMES_TECH; }
+
+    function explainFilter(sym, i, f) {
+      if (!f) return 'אין נתונים זמינים';
+      var pass = f.pass, val = f.val, fin = isFin(sym);
+      if (fin) {
+        var fe = [
+          pass ? val + ' — החברה מרוויחה טוב על ההון, סימן לניהול יעיל'  : val + ' — תשואה נמוכה על ההון',
+          pass ? val + ' — מחיר הגיוני ביחס לשווי הנכסים בספרים'          : val + ' — יקר ביחס לשווי הנכסים',
+          pass ? val + ' דיבידנד שנתי — הכנסה יציבה לבעל המניה'           : val + ' — דיבידנד נמוך מ-1.5%',
+          pass ? val + ' — הבנק מרוויח טוב על כל שקל נכסים'               : val + ' — הבנק לא מנצל את נכסיו מספיק',
+        ];
+        if (i < 4) return fe[i];
+      } else {
+        var te = [
+          pass ? 'ההכנסות גדלות ב' + val + ' — חברה שצומחת בקצב גבוה'   : 'הצמיחה ' + val + ' — איטית מדי לחברת טק',
+          pass ? val + ' — מחיר הגיוני ביחס לצמיחה'                       : val + ' — יקר מדי ביחס לצמיחה',
+          pass ? val + ' — החברה מרוויחה ביעילות גבוהה'                   : val + ' — שולי רווח נמוכים מהרצוי',
+          pass ? val + ' — חוב נמוך, מאזן בריא'                           : val + ' — חוב גבוה, סיכון במיתון',
+        ];
+        if (i < 4) return te[i];
+      }
+      if (i === 4) return pass ? val + ' — מעל ממוצע 200 יומי, השוק בצידה' : val + ' — מתחת לממוצע 200 יומי';
+      if (i === 5) return pass ? val + ' — הצמיחה האחרונה האיצה, עסק בתנופה' : val + ' — הצמיחה האחרונה האטה ⚠️';
+      return val;
+    }
+
+    function overallVerdict(sym, passes, total) {
+      if (!total) return 'אין נתונים זמינים עבור ' + sym;
+      var name = isFin(sym) ? 'חברה פיננסית' : 'מניה';
+      if (passes >= 5) return sym + ' עוברת ' + passes + ' מתוך ' + total + ' — ' + name + ' חזקה מאוד ✅';
+      if (passes >= 4) return sym + ' עוברת ' + passes + ' מתוך ' + total + ' — ביצועים טובים 👍';
+      if (passes >= 3) return sym + ' עוברת ' + passes + ' מתוך ' + total + ' — ממוצעת, לא בולטת ⚠️';
+      if (passes >= 2) return sym + ' עוברת רק ' + passes + ' מתוך ' + total + ' — חלשה 🔴';
+      return sym + ' נכשלת ברוב הפילטרים — זהירות ❌';
+    }
     syms.forEach(function(s) { scores[s] = { passes: 0, total: 0, filters: [null,null,null,null,null,null] }; });
 
     /* ── build one filter section ──────────────────── */
@@ -2424,23 +2459,31 @@
 
         /* detail row — hidden by default */
         var detail = document.createElement('div');
-        detail.style.cssText = 'display:none;padding:6px 4px 8px;display:none;flex-wrap:wrap;gap:5px;direction:rtl;background:hsl(222,14%,8%);';
+        detail.style.cssText = 'display:none;padding:8px 12px;direction:rtl;background:hsl(222,14%,8%);border-top:1px solid hsl(222,14%,14%);';
         var filterSlots = (sc && sc.filters) ? sc.filters : [null,null,null,null,null,null];
+
+        var verdict = document.createElement('div');
+        verdict.style.cssText = 'font-size:13px;font-weight:700;color:#e2e8f0;margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid hsl(222,14%,16%);';
+        verdict.textContent = overallVerdict(s, sc ? sc.passes : 0, sc ? sc.total : 0);
+        detail.appendChild(verdict);
+
         filterSlots.forEach(function(f, i) {
-          var fc = !f ? '#334155' : f.pass ? '#34d399' : '#f87171';
-          var chip = document.createElement('span');
-          chip.style.cssText = 'padding:2px 8px;border-radius:5px;font-size:12px;font-weight:700;' +
-            'color:' + fc + ';background:' + fc + '18;border:1px solid ' + fc + '33;';
-          chip.title = f ? f.val : 'אין נתון';
-          chip.textContent = (!f ? '— ' : f.pass ? '✓ ' : '✗ ') + filterNames(s)[i];
-          detail.appendChild(chip);
+          var fc = !f ? '#475569' : f.pass ? '#34d399' : '#f87171';
+          var icon = !f ? '—' : f.pass ? '✓' : '✗';
+          var line = document.createElement('div');
+          line.style.cssText = 'display:flex;align-items:baseline;gap:8px;margin-bottom:5px;font-size:13px;';
+          line.innerHTML =
+            '<span style="color:' + fc + ';font-weight:700;min-width:18px;flex-shrink:0;">' + icon + '</span>' +
+            '<span style="color:' + fc + ';font-weight:600;min-width:100px;flex-shrink:0;">' + filterNames(s)[i] + '</span>' +
+            '<span style="color:#94a3b8;">' + explainFilter(s, i, f) + '</span>';
+          detail.appendChild(line);
         });
         rowWrap.appendChild(detail);
 
         var open = false;
         row.addEventListener('click', function() {
           open = !open;
-          detail.style.display = open ? 'flex' : 'none';
+          detail.style.display = open ? 'block' : 'none';
           row.querySelector('span:last-child').textContent = open ? '▲' : '▼';
         });
 
