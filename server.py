@@ -337,9 +337,47 @@ async def get_fundamentals(symbols: str = ""):
             dy = info.get("dividendYield") or info.get("trailingAnnualDividendYield") or 0
             if dy and float(dy) > 0:
                 result["dividendYield"] = round(float(dy) * 100, 2)
+            pr = info.get("payoutRatio")
+            if pr is not None:
+                try:
+                    pr_val = float(pr)
+                    if 0 < pr_val < 20:  # decimal (e.g. 0.75 = 75%)
+                        result["payoutRatio"] = round(pr_val * 100, 1)
+                    elif pr_val >= 20:   # already a percentage
+                        result["payoutRatio"] = round(pr_val, 1)
+                except Exception:
+                    pass
             roa = info.get("returnOnAssets")
             if roa is not None:
                 result["roa"] = round(float(roa) * 100, 2)
+
+            # FFO growth for REITs — FFO ≈ Net Income + Depreciation/Amortization (YoY)
+            try:
+                import pandas as pd
+                inc = t.income_stmt
+                if not inc.empty and len(inc.columns) >= 2:
+                    def _get_ffo(col):
+                        ni, da = None, 0.0
+                        for row_label in inc.index:
+                            lbl = str(row_label)
+                            v = inc[col].get(row_label)
+                            if v is None or (hasattr(v, '__class__') and v.__class__.__name__ == 'float' and v != v):
+                                continue
+                            try:
+                                v = float(v)
+                            except Exception:
+                                continue
+                            if lbl in ("Net Income", "Net Income Common Stockholders"):
+                                ni = v
+                            elif "Depreciation" in lbl or "Amortization" in lbl:
+                                da += abs(v)
+                        return (ni + da) if ni is not None and da > 0 else None
+                    ffo0 = _get_ffo(inc.columns[0])
+                    ffo1 = _get_ffo(inc.columns[1])
+                    if ffo0 is not None and ffo1 is not None and ffo1 != 0:
+                        result["ffoGrowth"] = round((ffo0 - ffo1) / abs(ffo1) * 100, 1)
+            except Exception as fe:
+                logging.debug(f"FFO calc {sym}: {fe}")
 
             # Debt/EBITDA — try info first, then balance sheet + income stmt
             debt   = info.get("totalDebt") or info.get("longTermDebt")
