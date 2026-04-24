@@ -2152,6 +2152,39 @@
       if (passes >= 2) return sym + ' עוברת רק ' + passes + ' מתוך ' + total + ' — חלשה 🔴';
       return sym + ' נכשלת ברוב הפילטרים — זהירות ❌';
     }
+
+    function makeRecommendation(sym, passes, total, filterSlots) {
+      if (!total) return null;
+      var pct = passes / total;
+      var action, ac, bg;
+      if (pct >= 0.75)      { action = 'קנה';  ac = '#34d399'; bg = '#0d2d1e'; }
+      else if (pct >= 0.5)  { action = 'החזק'; ac = '#fbbf24'; bg = '#2d200a'; }
+      else                  { action = 'מכור'; ac = '#f87171'; bg = '#2d0d0d'; }
+
+      var names = filterNames(sym);
+      var passing = [], failing = [];
+      filterSlots.forEach(function(f, i) {
+        if (!f) return;
+        var n = (names[i] || '').replace(/[\u{1F300}-\u{1FFFF}\u{2600}-\u{26FF}]\s*/gu, '').trim();
+        (f.pass ? passing : failing).push(n);
+      });
+
+      var summary;
+      if (action === 'קנה') {
+        summary = 'חוזקות: ' + passing.slice(0,3).join(', ');
+        if (failing.length) summary += ' · חולשה: ' + failing.join(', ');
+      } else if (action === 'החזק') {
+        var parts = [];
+        if (passing.length) parts.push('חיובי: ' + passing.join(', '));
+        if (failing.length) parts.push('שלילי: ' + failing.slice(0,2).join(', '));
+        summary = parts.join(' · ');
+      } else {
+        summary = 'בעיות: ' + failing.slice(0,3).join(', ');
+        if (passing.length) summary += ' · חיובי: ' + passing.join(', ');
+      }
+      return { action: action, ac: ac, bg: bg, summary: summary };
+    }
+
     syms.forEach(function(s) { scores[s] = { passes: 0, total: 0, filters: [null,null,null,null,null,null] }; });
 
     /* ── build one filter section ──────────────────── */
@@ -2557,6 +2590,18 @@
             '<span style="color:#94a3b8;">' + explainFilter(s, i, f) + '</span>';
           detail.appendChild(line);
         });
+
+        /* ── recommendation bar ── */
+        var rec = makeRecommendation(s, sc ? sc.passes : 0, sc ? sc.total : 0, filterSlots);
+        if (rec) {
+          var recBar = document.createElement('div');
+          recBar.style.cssText = 'display:flex;align-items:center;gap:10px;margin-top:10px;padding:8px 10px;border-radius:5px;background:' + rec.bg + ';border:1px solid ' + rec.ac + '33;direction:rtl;';
+          recBar.innerHTML =
+            '<span style="font-size:14px;font-weight:800;color:' + rec.ac + ';min-width:42px;text-align:center;padding:2px 8px;border-radius:4px;background:' + rec.ac + '22;border:1px solid ' + rec.ac + '55;">' + rec.action + '</span>' +
+            '<span style="font-size:12px;color:#cbd5e1;">' + rec.summary + '</span>';
+          detail.appendChild(recBar);
+        }
+
         rowWrap.appendChild(detail);
 
         var open = false;
