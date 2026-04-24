@@ -2153,34 +2153,68 @@
       return sym + ' נכשלת ברוב הפילטרים — זהירות ❌';
     }
 
+    /*
+     * Weighted recommendation — each filter slot has a category-specific weight.
+     * F1 (growth/FFO/ROE) and F2 (valuation) are the heaviest — they drive the call.
+     * F5 (momentum) and F6 (trend) are light — they are indicators, not fundamentals.
+     *
+     * Slot:          F1    F2    F3    F4    F5    F6
+     * Tech:         3.0   2.5   2.0   2.0   0.5   0.5   (total=10.5)
+     * Financial:    2.5   2.5   2.0   2.0   0.5   0.5   (total=10.0)
+     * REIT:         3.0   1.5   3.0   1.0   0.5   0.5   (total=9.5)
+     *
+     * Thresholds on weighted score (wScore/wTotal):
+     *   >= 0.68 → קנה | >= 0.42 → החזק | else → מכור
+     */
+    var W_TECH = [3.0, 2.5, 2.0, 2.0, 0.5, 0.5];
+    var W_FIN  = [2.5, 2.5, 2.0, 2.0, 0.5, 0.5];
+    var W_REIT = [3.0, 1.5, 3.0, 1.0, 0.5, 0.5];
+
+    function recWeights(sym) {
+      return isREIT(sym) ? W_REIT : (isFin(sym) ? W_FIN : W_TECH);
+    }
+
     function makeRecommendation(sym, passes, total, filterSlots) {
       if (!total) return null;
-      var pct = passes / total;
+      var w = recWeights(sym);
+      var wScore = 0, wTotal = 0;
+      filterSlots.forEach(function(f, i) {
+        if (!f) return;
+        wTotal += w[i];
+        if (f.pass) wScore += w[i];
+      });
+      var pct = wTotal > 0 ? wScore / wTotal : 0;
+
       var action, ac, bg;
-      if (pct >= 0.75)      { action = 'קנה';  ac = '#34d399'; bg = '#0d2d1e'; }
-      else if (pct >= 0.5)  { action = 'החזק'; ac = '#fbbf24'; bg = '#2d200a'; }
+      if (pct >= 0.68)      { action = 'קנה';  ac = '#34d399'; bg = '#0d2d1e'; }
+      else if (pct >= 0.42) { action = 'החזק'; ac = '#fbbf24'; bg = '#2d200a'; }
       else                  { action = 'מכור'; ac = '#f87171'; bg = '#2d0d0d'; }
 
+      /* build summary — sort by weight desc so most important filters lead */
       var names = filterNames(sym);
       var passing = [], failing = [];
       filterSlots.forEach(function(f, i) {
         if (!f) return;
         var n = (names[i] || '').replace(/[\u{1F300}-\u{1FFFF}\u{2600}-\u{26FF}]\s*/gu, '').trim();
-        (f.pass ? passing : failing).push(n);
+        (f.pass ? passing : failing).push({ n: n, w: w[i] });
       });
+      passing.sort(function(a,b){ return b.w - a.w; });
+      failing.sort(function(a,b){ return b.w - a.w; });
+      var pNames = passing.map(function(x){ return x.n; });
+      var fNames = failing.map(function(x){ return x.n; });
 
       var summary;
       if (action === 'קנה') {
-        summary = 'חוזקות: ' + passing.slice(0,3).join(', ');
-        if (failing.length) summary += ' · חולשה: ' + failing.join(', ');
+        summary = 'חוזקות: ' + pNames.slice(0,3).join(', ');
+        if (fNames.length) summary += ' · חולשה: ' + fNames.slice(0,2).join(', ');
       } else if (action === 'החזק') {
         var parts = [];
-        if (passing.length) parts.push('חיובי: ' + passing.join(', '));
-        if (failing.length) parts.push('שלילי: ' + failing.slice(0,2).join(', '));
+        if (pNames.length) parts.push('חיובי: ' + pNames.slice(0,2).join(', '));
+        if (fNames.length) parts.push('שלילי: ' + fNames.slice(0,2).join(', '));
         summary = parts.join(' · ');
       } else {
-        summary = 'בעיות: ' + failing.slice(0,3).join(', ');
-        if (passing.length) summary += ' · חיובי: ' + passing.join(', ');
+        summary = 'בעיות: ' + fNames.slice(0,3).join(', ');
+        if (pNames.length) summary += ' · חיובי: ' + pNames.slice(0,2).join(', ');
       }
       return { action: action, ac: ac, bg: bg, summary: summary };
     }
