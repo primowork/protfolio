@@ -6203,4 +6203,429 @@
 })();
 </script>
 
+<style>
+/* =======================================================
+   Feature Patch v22 — Beautiful portfolio donut chart
+   ======================================================= */
+
+#pp-v22-card {
+  direction: rtl;
+  padding: 24px 20px;
+  background: hsl(222,14%,10%);
+  border: 1px solid hsl(222,14%,18%);
+  border-radius: 14px;
+  font-family: 'DM Sans', ui-sans-serif, system-ui, sans-serif;
+}
+#pp-v22-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #e2e8f0;
+  margin-bottom: 14px;
+  letter-spacing: 0.2px;
+}
+.pp-v22-wrap {
+  display: flex;
+  align-items: center;
+  gap: 40px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.pp-v22-chart-area {
+  position: relative;
+  width: 340px;
+  height: 340px;
+  flex-shrink: 0;
+}
+.pp-v22-chart-area canvas {
+  width: 100% !important;
+  height: 100% !important;
+}
+.pp-v22-center {
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%,-50%);
+  text-align: center;
+  pointer-events: none;
+  direction: rtl;
+}
+.pp-v22-center-ticker {
+  font-size: 22px;
+  font-weight: 600;
+  color: #f0f1f3;
+  letter-spacing: 0.3px;
+}
+.pp-v22-center-val {
+  font-size: 14px;
+  color: #7a7f8a;
+  margin-top: 3px;
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+}
+.pp-v22-center-pct {
+  font-size: 12px;
+  color: #4a4f5a;
+  margin-top: 2px;
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+}
+.pp-v22-legend {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px 20px;
+  flex: 1;
+  min-width: 260px;
+  max-width: 420px;
+}
+.pp-v22-li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.12s, opacity 0.15s;
+}
+.pp-v22-li:hover { background: rgba(255,255,255,0.04); }
+.pp-v22-li-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  box-shadow: 0 0 0 1px rgba(255,255,255,0.08);
+}
+.pp-v22-li-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: #e2e8f0;
+  min-width: 38px;
+}
+.pp-v22-li-pct {
+  font-size: 12px;
+  color: #7a7f8a;
+  margin-right: auto;
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+}
+
+/* completely hide original Recharts pie chart */
+.pp-v22-hidden-recharts {
+  display: none !important;
+}
+
+@media (max-width: 640px) {
+  .pp-v22-wrap { gap: 16px; }
+  .pp-v22-chart-area { width: 260px; height: 260px; }
+  .pp-v22-center-ticker { font-size: 18px; }
+  .pp-v22-center-val { font-size: 12px; }
+  .pp-v22-legend { grid-template-columns: 1fr 1fr; gap: 2px 10px; min-width: 0; }
+  .pp-v22-li { padding: 4px 6px; gap: 6px; }
+  .pp-v22-li-name { font-size: 12px; min-width: 34px; }
+  .pp-v22-li-pct { font-size: 11px; }
+}
+</style>
+
+<script>
+/* =======================================================
+   Primo Portfolio Feature Patch v22
+   Large Chart.js donut replacing the small Recharts pie
+   ======================================================= */
+(function () {
+  'use strict';
+
+  var CARD_ID      = 'pp-v22-card';
+  var CHARTJS_URL  = 'https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js';
+
+  /* palette ordered by visual appeal — assigned to slices in desc order */
+  var PALETTE = [
+    '#38bdf8', '#818cf8', '#34d399', '#facc15', '#fb7185', '#f97316',
+    '#a78bfa', '#2dd4bf', '#fbbf24', '#60a5fa', '#f472b6', '#ef4444',
+    '#4ade80', '#c084fc', '#67e8f9', '#fda4af', '#86efac', '#cbd5e1',
+    '#fb923c', '#93c5fd', '#f0abfc', '#fcd34d', '#6ee7b7', '#fca5a5'
+  ];
+
+  var _chart     = null;
+  var _chartReady = false;
+
+  /* ── load Chart.js from CDN once ─────────────────── */
+  function loadChartJs(cb) {
+    if (window.Chart) { _chartReady = true; cb(); return; }
+    var existing = document.querySelector('script[data-pp-chartjs]');
+    if (existing) {
+      existing.addEventListener('load', function() { _chartReady = true; cb(); });
+      return;
+    }
+    var s = document.createElement('script');
+    s.src = CHARTJS_URL;
+    s.async = true;
+    s.dataset.ppChartjs = '1';
+    s.addEventListener('load',  function() { _chartReady = true; cb(); });
+    s.addEventListener('error', function() { console.error('Chart.js failed to load'); });
+    document.head.appendChild(s);
+  }
+
+  /* ── compute allocation from localStorage + live prices ── */
+  function computeAllocation() {
+    try {
+      var raw = localStorage.getItem('primo_portfolio_v6');
+      if (!raw) return { total: 0, slices: [] };
+      var state = JSON.parse(raw);
+      var net = {};
+      (state.transactions || []).forEach(function(t) {
+        var sym = ((t.ticker || t.symbol || '')).toUpperCase();
+        if (!sym) return;
+        var sh = parseFloat(t.shares) || 0;
+        net[sym] = (net[sym] || 0) + (t.type === 'sell' ? -sh : sh);
+      });
+      var prices = state.prices || {};
+      var total = 0, rows = [];
+      Object.keys(net).forEach(function(sym) {
+        var shares = net[sym];
+        var p = prices[sym];
+        if (!p || shares <= 0) return;
+        var value = shares * p;
+        total += value;
+        rows.push({ sym: sym, value: value });
+      });
+      if (total <= 0) return { total: 0, slices: [] };
+      rows.sort(function(a, b) { return b.value - a.value; });
+      rows.forEach(function(r, i) {
+        r.pct = r.value / total * 100;
+        r.color = PALETTE[i % PALETTE.length];
+      });
+      return { total: total, slices: rows };
+    } catch(e) {
+      return { total: 0, slices: [] };
+    }
+  }
+
+  function fmtUSD(v) {
+    return '$' + Math.round(v).toLocaleString('en-US');
+  }
+
+  /* ── find existing Recharts pie wrapper to hide ──── */
+  function findRechartsPie() {
+    /* scan for any .recharts-pie inside main */
+    var candidates = document.querySelectorAll('main .recharts-wrapper, main .recharts-responsive-container');
+    for (var i = 0; i < candidates.length; i++) {
+      if (candidates[i].querySelector('.recharts-pie')) return candidates[i];
+    }
+    return null;
+  }
+
+  /* ── build the new donut card ───────────────────── */
+  function buildCard(alloc) {
+    var card = document.createElement('div');
+    card.id = CARD_ID;
+
+    var legendHtml = alloc.slices.map(function(s, i) {
+      return '<div class="pp-v22-li" data-idx="' + i + '">' +
+        '<span class="pp-v22-li-dot" style="background:' + s.color + '"></span>' +
+        '<span class="pp-v22-li-name">' + s.sym + '</span>' +
+        '<span class="pp-v22-li-pct">' + s.pct.toFixed(1) + '%</span>' +
+      '</div>';
+    }).join('');
+
+    card.innerHTML =
+      '<div id="pp-v22-title">חלוקת התיק לפי מניה</div>' +
+      '<div class="pp-v22-wrap">' +
+        '<div class="pp-v22-chart-area">' +
+          '<canvas id="pp-v22-canvas" aria-label="Portfolio allocation donut"></canvas>' +
+          '<div class="pp-v22-center" id="pp-v22-center">' +
+            '<div class="pp-v22-center-ticker">תיק</div>' +
+            '<div class="pp-v22-center-val">' + fmtUSD(alloc.total) + '</div>' +
+            '<div class="pp-v22-center-pct">100%</div>' +
+          '</div>' +
+        '</div>' +
+        '<div class="pp-v22-legend" id="pp-v22-legend">' + legendHtml + '</div>' +
+      '</div>';
+
+    return card;
+  }
+
+  /* ── Chart.js donut setup ──────────────────────── */
+  function makeChart(canvas, alloc) {
+    var ctx = canvas.getContext('2d');
+    if (_chart) { try { _chart.destroy(); } catch(e){} _chart = null; }
+
+    _chart = new window.Chart(ctx, {
+      type: 'doughnut',
+      data: {
+        labels:   alloc.slices.map(function(s) { return s.sym; }),
+        datasets: [{
+          data:            alloc.slices.map(function(s) { return s.pct; }),
+          backgroundColor: alloc.slices.map(function(s) { return s.color; }),
+          borderColor:     'transparent',
+          borderWidth:     0,
+          hoverOffset:     12,
+          spacing:         2,
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        cutout: '70%',
+        plugins: {
+          legend:  { display: false },
+          tooltip: { enabled: false }
+        },
+        animation: { animateRotate: true, duration: 900 },
+        onHover: function(evt, elements) {
+          var center = document.getElementById('pp-v22-center');
+          var legendItems = document.querySelectorAll('#pp-v22-legend .pp-v22-li');
+          if (elements && elements.length > 0) {
+            var i = elements[0].index;
+            var s = alloc.slices[i];
+            if (center) {
+              center.innerHTML =
+                '<div class="pp-v22-center-ticker">' + s.sym + '</div>' +
+                '<div class="pp-v22-center-val">' + fmtUSD(s.value) + '</div>' +
+                '<div class="pp-v22-center-pct">' + s.pct.toFixed(1) + '%</div>';
+            }
+            legendItems.forEach(function(el, j) { el.style.opacity = j === i ? '1' : '0.35'; });
+          } else {
+            if (center) {
+              center.innerHTML =
+                '<div class="pp-v22-center-ticker">תיק</div>' +
+                '<div class="pp-v22-center-val">' + fmtUSD(alloc.total) + '</div>' +
+                '<div class="pp-v22-center-pct">100%</div>';
+            }
+            legendItems.forEach(function(el) { el.style.opacity = '1'; });
+          }
+        }
+      }
+    });
+
+    /* wire legend click → highlight slice */
+    var legend = document.getElementById('pp-v22-legend');
+    if (legend) {
+      legend.addEventListener('click', function(e) {
+        var li = e.target.closest('.pp-v22-li');
+        if (!li) return;
+        var idx = parseInt(li.dataset.idx, 10);
+        if (isNaN(idx)) return;
+        var meta = _chart.getDatasetMeta(0);
+        meta.data.forEach(function(arc, j) {
+          arc.options.offset = j === idx ? 14 : 0;
+        });
+        _chart.update();
+        /* also update center label */
+        var s = alloc.slices[idx];
+        var center = document.getElementById('pp-v22-center');
+        if (center && s) {
+          center.innerHTML =
+            '<div class="pp-v22-center-ticker">' + s.sym + '</div>' +
+            '<div class="pp-v22-center-val">' + fmtUSD(s.value) + '</div>' +
+            '<div class="pp-v22-center-pct">' + s.pct.toFixed(1) + '%</div>';
+        }
+      });
+    }
+  }
+
+  /* ── inject / refresh ───────────────────────────── */
+  function inject() {
+    var alloc = computeAllocation();
+    if (!alloc.slices.length) return false;
+
+    var existing = findRechartsPie();
+    if (!existing) return false;
+
+    var existingCard = document.getElementById(CARD_ID);
+    /* rebuild card whenever slice count or order changes */
+    var signature = alloc.slices.map(function(s) { return s.sym; }).join(',');
+
+    if (existingCard && existingCard.dataset.sig === signature) {
+      /* only update values, no re-render */
+      updateValues(alloc);
+      return true;
+    }
+
+    /* hide the Recharts pie wrapper — find its outermost card ancestor
+       (up to but not including .pp-v22-card or main) */
+    var ancestor = existing;
+    /* walk up at most 4 levels looking for a card-like container */
+    for (var i = 0; i < 4; i++) {
+      if (!ancestor.parentElement) break;
+      var p = ancestor.parentElement;
+      if (p.tagName === 'MAIN') break;
+      ancestor = p;
+    }
+    ancestor.classList.add('pp-v22-hidden-recharts');
+
+    var card = buildCard(alloc);
+    card.dataset.sig = signature;
+
+    if (existingCard && existingCard.parentNode) {
+      existingCard.parentNode.replaceChild(card, existingCard);
+    } else {
+      /* put card where the old recharts was */
+      ancestor.parentNode.insertBefore(card, ancestor.nextSibling);
+    }
+
+    /* render chart */
+    loadChartJs(function() {
+      var cv = document.getElementById('pp-v22-canvas');
+      if (cv) makeChart(cv, alloc);
+    });
+
+    return true;
+  }
+
+  function updateValues(alloc) {
+    var card = document.getElementById(CARD_ID);
+    if (!card) return;
+    var center = card.querySelector('#pp-v22-center');
+    if (center) {
+      center.innerHTML =
+        '<div class="pp-v22-center-ticker">תיק</div>' +
+        '<div class="pp-v22-center-val">' + fmtUSD(alloc.total) + '</div>' +
+        '<div class="pp-v22-center-pct">100%</div>';
+    }
+    var legendItems = card.querySelectorAll('.pp-v22-li');
+    legendItems.forEach(function(el, i) {
+      var s = alloc.slices[i];
+      if (!s) return;
+      var pct = el.querySelector('.pp-v22-li-pct');
+      if (pct) pct.textContent = s.pct.toFixed(1) + '%';
+    });
+    if (_chart) {
+      _chart.data.datasets[0].data = alloc.slices.map(function(s) { return s.pct; });
+      _chart.update('none');
+    }
+  }
+
+  /* ── active-tab check ───────────────────────────── */
+  function isDashActive() {
+    var ok = false;
+    document.querySelectorAll('button').forEach(function(b) {
+      if (b.closest && b.closest('#pp-v20-header')) return;
+      if (b.textContent.trim() === 'דשבורד' &&
+          b.className && b.className.indexOf('border-violet-500') !== -1) ok = true;
+    });
+    return ok;
+  }
+
+  /* ── boot / re-inject on tab change ─────────────── */
+  var _deb22 = null;
+  var obs22 = new MutationObserver(function() {
+    clearTimeout(_deb22);
+    _deb22 = setTimeout(function() {
+      if (!isDashActive()) {
+        /* on other tabs the React chart isn't rendered — nothing to do */
+        return;
+      }
+      inject();
+    }, 300);
+  });
+  obs22.observe(document.body, { childList: true, subtree: true });
+
+  /* refresh on price updates */
+  window.addEventListener('storage', function(e) {
+    if (e.key === 'primo_portfolio_v6') {
+      var card = document.getElementById(CARD_ID);
+      if (card) updateValues(computeAllocation());
+    }
+  });
+
+  setTimeout(inject, 2500);
+
+})();
+</script>
+
 </body></html>
