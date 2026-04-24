@@ -5126,13 +5126,19 @@
 }
 
 /* ── PORTFOLIO BAR ───────────────────────────────────── */
+/* Hidden by default — the v21 chart card now shows portfolio value much bigger.
+   Kept in the DOM in case the chart card isn't injected yet or on non-dashboard tabs. */
 #pp-v20-portfolio {
-  display: flex;
+  display: none;
   align-items: center;
   justify-content: space-between;
   padding: 16px 24px;
   gap: 12px;
   flex-wrap: wrap;
+}
+/* Show the v20 portfolio bar only when the v21 chart card isn't present */
+body:not(:has(#pp-v21-chart-card)) #pp-v20-portfolio {
+  display: flex;
 }
 .pp-v20-pv-block {
   display: flex;
@@ -5710,12 +5716,11 @@
    ======================================================= */
 
 #pp-v21-chart-card {
-  margin: 14px auto;
-  max-width: 960px;
+  margin: 10px 16px;
   background: hsl(222,14%,10%);
   border: 1px solid hsl(222,14%,18%);
   border-radius: 14px;
-  padding: 18px 20px 14px;
+  padding: 18px 24px 14px;
   direction: rtl;
   font-family: 'DM Sans', ui-sans-serif, system-ui, sans-serif;
 }
@@ -5803,7 +5808,7 @@
 
 #pp-v21-chart-wrap {
   position: relative;
-  height: 180px;
+  height: 320px;
   margin: 18px 0 10px;
   overflow: hidden;
 }
@@ -5856,9 +5861,9 @@
 }
 
 @media (max-width: 640px) {
-  #pp-v21-chart-card { margin: 10px 8px; padding: 14px 14px 10px; border-radius: 10px; }
+  #pp-v21-chart-card { margin: 8px; padding: 14px 14px 10px; border-radius: 10px; }
   #pp-v21-tw-value { font-size: 26px; }
-  #pp-v21-chart-wrap { height: 140px; }
+  #pp-v21-chart-wrap { height: 200px; }
   .pp-v21-range { padding: 6px 10px; font-size: 11px; }
 }
 </style>
