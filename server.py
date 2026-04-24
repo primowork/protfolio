@@ -330,6 +330,17 @@ async def get_fundamentals(symbols: str = ""):
             if roe is not None:
                 result["roe"] = round(roe * 100, 1)
 
+            # Financial-stock metrics: P/B, dividend yield, ROA
+            pb = info.get("priceToBook")
+            if pb and pb > 0:
+                result["priceToBook"] = round(float(pb), 2)
+            dy = info.get("dividendYield") or info.get("trailingAnnualDividendYield") or 0
+            if dy and float(dy) > 0:
+                result["dividendYield"] = round(float(dy) * 100, 2)
+            roa = info.get("returnOnAssets")
+            if roa is not None:
+                result["roa"] = round(float(roa) * 100, 2)
+
             # Debt/EBITDA — try info first, then balance sheet + income stmt
             debt   = info.get("totalDebt") or info.get("longTermDebt")
             ebitda = info.get("ebitda") or info.get("EBITDA")
