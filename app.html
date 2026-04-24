@@ -2755,18 +2755,9 @@
   }
 
   var _deb10 = null;
-  var _lastInject = 0;
   var obs10 = new MutationObserver(function() {
-    var now = Date.now();
-    if (now - _lastInject > 2000) {
-      /* first mutation in a while — run immediately */
-      _lastInject = now;
-      clearTimeout(_deb10);
-      injectBoxes();
-    } else {
-      clearTimeout(_deb10);
-      _deb10 = setTimeout(function() { _lastInject = Date.now(); injectBoxes(); }, 2000);
-    }
+    clearTimeout(_deb10);
+    _deb10 = setTimeout(injectBoxes, 300);
   });
   obs10.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
   setTimeout(injectBoxes, 2500);
