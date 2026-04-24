@@ -169,6 +169,68 @@ async def get_prices(symbols: str = ""):
     logging.info(f"prices={len(prices)} prevClose={len(prev)}")
     return JSONResponse({"prices": prices, "prevClose": prev})
 
+
+@app.get("/api/portfolio-history")
+async def get_portfolio_history(shares: str = "", range: str = "1mo", interval: str = ""):
+    """Historical portfolio value over a time range.
+
+    shares    : 'SYM:qty,SYM:qty' — current net share counts (required)
+    range     : 1d | 5d | 1mo | 3mo | 6mo | ytd | 1y | 2y | 5y | max
+    interval  : yfinance interval (auto-chosen if empty)
+    """
+    if not shares:
+        return JSONResponse({"points": []})
+
+    pairs = {}
+    for tok in shares.split(","):
+        if ":" not in tok: continue
+        k, v = tok.split(":", 1)
+        try:
+            q = float(v)
+            if q > 0: pairs[k.strip().upper()] = q
+        except ValueError:
+            continue
+    if not pairs:
+        return JSONResponse({"points": []})
+
+    rng = range.lower()
+    if not interval:
+        interval = {"1d":"5m","5d":"30m","1mo":"1d","3mo":"1d","6mo":"1d",
+                    "ytd":"1d","1y":"1d","2y":"1wk","5y":"1wk","max":"1mo"}.get(rng, "1d")
+
+    sym_list = list(pairs.keys())
+    import pandas as pd
+    try:
+        hist = yf.download(sym_list, period=rng, interval=interval,
+                           auto_adjust=True, progress=False, threads=True,
+                           group_by="column")
+        if hist.empty:
+            return JSONResponse({"points": []})
+        closes = hist["Close"]
+        if isinstance(closes, pd.Series):
+            closes = closes.to_frame(name=sym_list[0])
+
+        points = []
+        for ts, row in closes.iterrows():
+            total = 0.0
+            have_any = False
+            for sym, qty in pairs.items():
+                if sym in row.index:
+                    v = row[sym]
+                    if pd.notna(v):
+                        total += float(v) * qty
+                        have_any = True
+            if have_any:
+                points.append({
+                    "t": int(ts.timestamp() * 1000),
+                    "v": round(total, 2)
+                })
+        return JSONResponse({"points": points, "range": rng, "interval": interval})
+    except Exception as e:
+        logging.warning(f"portfolio-history: {e}")
+        return JSONResponse({"points": [], "error": str(e)})
+
+
 @app.get("/api/ma200")
 async def get_ma200(symbols: str = ""):
     if not symbols:

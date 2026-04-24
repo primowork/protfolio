@@ -4908,8 +4908,18 @@
     .then(function (r) { return r.ok ? r.json() : {google: false, apple: false}; })
     .then(function (cfg) {
       if (!cfg.google && !cfg.apple) {
-        // No OAuth configured → dev/unconfigured mode, open access
-        overlay.style.display = 'none';
+        // No OAuth configured → show error in overlay rather than silently letting in
+        var errEl2 = document.getElementById('pp-auth-err');
+        var gbtn  = document.getElementById('pp-google-btn');
+        if (gbtn) {
+          gbtn.style.opacity = '0.4';
+          gbtn.style.pointerEvents = 'none';
+        }
+        if (errEl2) {
+          errEl2.textContent = 'Google OAuth לא מוגדר בשרת. הגדר GOOGLE_CLIENT_ID ב-Railway.';
+          errEl2.style.display = 'block';
+        }
+        overlay.style.display = 'flex';
         return;
       }
 
@@ -5061,6 +5071,16 @@
   font-family: 'IBM Plex Mono', ui-monospace, monospace;
   font-size: 11px;
   color: var(--v20-muted);
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 6px;
+  transition: background .15s, border-color .15s;
+  border: 1px solid transparent;
+  user-select: none;
+}
+.pp-v20-fx:hover {
+  background: rgba(255,255,255,0.04);
+  border-color: rgba(255,255,255,0.12);
 }
 .pp-v20-fx strong { color: var(--v20-text); font-weight: 500; }
 .pp-v20-fx-delayed {
@@ -5489,6 +5509,22 @@
       '</div>';
     hdr.appendChild(top);
 
+    /* wire USD/ILS click-toggle — shared with v21 chart card */
+    var fxWrap = top.querySelector('#pp-v20-fx-wrap');
+    if (fxWrap) {
+      fxWrap.title = 'לחץ להחלפת מטבע (USD ⇄ ILS)';
+      fxWrap.addEventListener('click', function() {
+        var cur = 'USD';
+        try { cur = localStorage.getItem('pp_v21_currency') || 'USD'; } catch(e) {}
+        var next = cur === 'USD' ? 'ILS' : 'USD';
+        try { localStorage.setItem('pp_v21_currency', next); } catch(e) {}
+        /* notify v21 in the same tab */
+        window.dispatchEvent(new StorageEvent('storage', {
+          key: 'pp_v21_currency', newValue: next, storageArea: localStorage
+        }));
+      });
+    }
+
     /* PORTFOLIO BAR */
     var pv = document.createElement('div');
     pv.id = 'pp-v20-portfolio';
@@ -5668,4 +5704,503 @@
 
 })();
 </script>
+<style>
+/* =======================================================
+   Feature Patch v21 — Portfolio chart + USD/ILS toggle
+   ======================================================= */
+
+#pp-v21-chart-card {
+  margin: 14px auto;
+  max-width: 960px;
+  background: hsl(222,14%,10%);
+  border: 1px solid hsl(222,14%,18%);
+  border-radius: 14px;
+  padding: 18px 20px 14px;
+  direction: rtl;
+  font-family: 'DM Sans', ui-sans-serif, system-ui, sans-serif;
+}
+#pp-v21-chart-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 6px;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.pp-v21-tw-label {
+  font-size: 13px;
+  color: #7a7f8a;
+  letter-spacing: 0.3px;
+  font-weight: 400;
+}
+#pp-v21-tw-value {
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-size: 34px;
+  font-weight: 500;
+  color: #f0f1f3;
+  letter-spacing: -0.6px;
+  line-height: 1.1;
+  margin-top: 2px;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+#pp-v21-tw-value:hover { opacity: 0.85; }
+#pp-v21-tw-change {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  flex-wrap: wrap;
+}
+#pp-v21-tw-amt { font-size: 13px; color: #7a7f8a; }
+#pp-v21-tw-pct {
+  font-size: 12px;
+  padding: 2px 7px;
+  border-radius: 5px;
+  color: #7a7f8a;
+  background: rgba(122,127,138,0.1);
+  border: 1px solid rgba(122,127,138,0.2);
+}
+#pp-v21-tw-change.up #pp-v21-tw-amt,
+#pp-v21-tw-change.up #pp-v21-tw-pct { color: #34d399; }
+#pp-v21-tw-change.up #pp-v21-tw-pct {
+  background: rgba(52,211,153,0.1);
+  border-color: rgba(52,211,153,0.2);
+}
+#pp-v21-tw-change.down #pp-v21-tw-amt,
+#pp-v21-tw-change.down #pp-v21-tw-pct { color: #f87171; }
+#pp-v21-tw-change.down #pp-v21-tw-pct {
+  background: rgba(248,113,113,0.1);
+  border-color: rgba(248,113,113,0.2);
+}
+
+#pp-v21-currency {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  color: #7a7f8a;
+  font-family: 'DM Sans', ui-sans-serif, system-ui, sans-serif;
+  cursor: pointer;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.08);
+  transition: all 0.15s;
+  user-select: none;
+  margin-right: 6px;
+}
+#pp-v21-currency:hover {
+  color: #f0f1f3;
+  background: rgba(255,255,255,0.06);
+  border-color: rgba(255,255,255,0.15);
+}
+.pp-v21-currency-swap {
+  font-size: 10px;
+  opacity: 0.6;
+}
+
+#pp-v21-chart-wrap {
+  position: relative;
+  height: 180px;
+  margin: 18px 0 10px;
+  overflow: hidden;
+}
+#pp-v21-chart-svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+.pp-v21-axis-label {
+  position: absolute;
+  right: 2px;
+  font-size: 11px;
+  color: #4a4f5a;
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  pointer-events: none;
+}
+#pp-v21-axis-hi { top: 0; }
+#pp-v21-axis-lo { bottom: 0; }
+#pp-v21-chart-empty {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 13px; color: #4a4f5a;
+}
+
+#pp-v21-ranges {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding-top: 6px;
+  border-top: 1px solid rgba(255,255,255,0.04);
+  flex-wrap: wrap;
+}
+.pp-v21-range {
+  padding: 7px 14px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #7a7f8a;
+  background: none;
+  border: none;
+  border-radius: 20px;
+  cursor: pointer;
+  font-family: 'DM Sans', ui-sans-serif, system-ui, sans-serif;
+  transition: all 0.15s;
+}
+.pp-v21-range:hover { color: #f0f1f3; }
+.pp-v21-range.active {
+  background: rgba(255,255,255,0.07);
+  color: #f0f1f3;
+}
+
+@media (max-width: 640px) {
+  #pp-v21-chart-card { margin: 10px 8px; padding: 14px 14px 10px; border-radius: 10px; }
+  #pp-v21-tw-value { font-size: 26px; }
+  #pp-v21-chart-wrap { height: 140px; }
+  .pp-v21-range { padding: 6px 10px; font-size: 11px; }
+}
+</style>
+
+<script>
+/* =======================================================
+   Primo Portfolio Feature Patch v21
+   Total Worth chart + USD/ILS click-to-toggle
+   ======================================================= */
+(function () {
+  'use strict';
+
+  var CARD_ID  = 'pp-v21-chart-card';
+  var CURR_KEY = 'pp_v21_currency';   // 'USD' | 'ILS'
+  var RANGE_KEY = 'pp_v21_range';     // '1d' | '5d' | '1mo' | ...
+
+  var RANGES = [
+    { id: '1d',  label: '1D'  },
+    { id: '5d',  label: '1W'  },
+    { id: '1mo', label: '1M'  },
+    { id: '3mo', label: '3M'  },
+    { id: 'ytd', label: 'YTD' },
+    { id: '1y',  label: '1Y'  },
+    { id: 'max', label: 'ALL' },
+  ];
+
+  /* ── state ───────────────────────────────────────── */
+  var _points   = [];
+  var _range    = (function(){ try { return localStorage.getItem(RANGE_KEY) || '1d'; } catch(e){ return '1d'; } })();
+  var _currency = (function(){ try { return localStorage.getItem(CURR_KEY)  || 'USD'; } catch(e){ return 'USD'; } })();
+  var _fxRate   = null;
+  var _fetching = false;
+
+  /* ── utilities ───────────────────────────────────── */
+  function getShares() {
+    try {
+      var raw = localStorage.getItem('primo_portfolio_v6');
+      if (!raw) return {};
+      var state = JSON.parse(raw);
+      var net = {};
+      (state.transactions || []).forEach(function(t) {
+        var sym = ((t.ticker || t.symbol || '')).toUpperCase();
+        if (!sym) return;
+        var sh = parseFloat(t.shares) || 0;
+        net[sym] = (net[sym] || 0) + (t.type === 'sell' ? -sh : sh);
+      });
+      Object.keys(net).forEach(function(k) { if (net[k] <= 0) delete net[k]; });
+      return net;
+    } catch(e) { return {}; }
+  }
+
+  function sharesParam(net) {
+    return Object.keys(net)
+      .map(function(k) { return k + ':' + net[k]; })
+      .join(',');
+  }
+
+  function fmtMoney(v, curr) {
+    if (v == null || isNaN(v)) return '—';
+    if (curr === 'ILS' && _fxRate) {
+      var ils = Math.abs(v) * _fxRate;
+      return '₪' + ils.toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    }
+    return '$' + Math.abs(v).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  }
+
+  function convertedValue(v) {
+    if (v == null) return null;
+    if (_currency === 'ILS' && _fxRate) return v * _fxRate;
+    return v;
+  }
+
+  /* ── FX rate ─────────────────────────────────────── */
+  function fetchFx() {
+    fetch('/api/usdils')
+      .then(function(r) { return r.ok ? r.json() : null; })
+      .then(function(d) {
+        if (d && d.rate) { _fxRate = d.rate; render(); }
+      })
+      .catch(function() {});
+  }
+
+  /* ── history fetch ───────────────────────────────── */
+  function fetchHistory() {
+    var net = getShares();
+    if (!Object.keys(net).length) {
+      _points = [];
+      render();
+      return;
+    }
+    if (_fetching) return;
+    _fetching = true;
+    var sp = sharesParam(net);
+    fetch('/api/portfolio-history?range=' + encodeURIComponent(_range) +
+          '&shares=' + encodeURIComponent(sp))
+      .then(function(r) { return r.json(); })
+      .then(function(d) {
+        _points = d.points || [];
+        render();
+      })
+      .catch(function() { _points = []; render(); })
+      .finally(function() { _fetching = false; });
+  }
+
+  /* ── chart SVG render ────────────────────────────── */
+  function renderChart() {
+    var svg = document.getElementById('pp-v21-chart-svg');
+    var hiEl = document.getElementById('pp-v21-axis-hi');
+    var loEl = document.getElementById('pp-v21-axis-lo');
+    var empty = document.getElementById('pp-v21-chart-empty');
+    if (!svg) return;
+
+    if (!_points.length) {
+      svg.innerHTML = '';
+      if (hiEl) hiEl.textContent = '';
+      if (loEl) loEl.textContent = '';
+      if (empty) empty.style.display = 'flex';
+      if (empty) empty.textContent = _fetching ? 'טוען...' : 'אין נתונים להצגה';
+      return;
+    }
+    if (empty) empty.style.display = 'none';
+
+    var W = svg.clientWidth || 600;
+    var H = svg.clientHeight || 180;
+    svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
+
+    var vals = _points.map(function(p) { return p.v; });
+    var hi = Math.max.apply(null, vals);
+    var lo = Math.min.apply(null, vals);
+    if (hi === lo) { hi = hi * 1.005; lo = lo * 0.995; }
+    var pad = (hi - lo) * 0.05;
+    hi += pad; lo -= pad;
+
+    var first = _points[0].v;
+    var last  = _points[_points.length - 1].v;
+    var up = last >= first;
+    var color = up ? '#34d399' : '#f87171';
+    var fillColor = up ? 'rgba(52,211,153,0.15)' : 'rgba(248,113,113,0.15)';
+
+    var gradId = 'pp-v21-grad-' + (up ? 'up' : 'down');
+
+    var pts = _points.map(function(p, i) {
+      var x = _points.length === 1 ? W / 2 : (i / (_points.length - 1)) * W;
+      var y = H - ((p.v - lo) / (hi - lo)) * H;
+      return x.toFixed(1) + ',' + y.toFixed(1);
+    });
+    var path = 'M ' + pts.join(' L ');
+    var fillPath = path + ' L ' + W + ',' + H + ' L 0,' + H + ' Z';
+
+    svg.innerHTML =
+      '<defs>' +
+        '<linearGradient id="' + gradId + '" x1="0" y1="0" x2="0" y2="1">' +
+          '<stop offset="0%" stop-color="' + color + '" stop-opacity="0.35"/>' +
+          '<stop offset="100%" stop-color="' + color + '" stop-opacity="0"/>' +
+        '</linearGradient>' +
+      '</defs>' +
+      '<path d="' + fillPath + '" fill="url(#' + gradId + ')"/>' +
+      '<path d="' + path + '" fill="none" stroke="' + color + '" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/>';
+
+    if (hiEl) hiEl.textContent = fmtMoney(convertedValue(hi - pad), _currency);
+    if (loEl) loEl.textContent = fmtMoney(convertedValue(lo + pad), _currency);
+  }
+
+  function renderTopLine() {
+    var val = document.getElementById('pp-v21-tw-value');
+    var amt = document.getElementById('pp-v21-tw-amt');
+    var pct = document.getElementById('pp-v21-tw-pct');
+    var chg = document.getElementById('pp-v21-tw-change');
+    var curBox = document.getElementById('pp-v21-currency');
+
+    if (curBox) {
+      curBox.innerHTML = _currency +
+        '<span class="pp-v21-currency-swap">⇄</span>' +
+        (_currency === 'USD' && _fxRate ? ' ₪' + _fxRate.toFixed(3) : '');
+    }
+
+    if (!_points.length) {
+      if (val) val.textContent = '—';
+      if (amt) amt.textContent = '';
+      if (pct) pct.textContent = '';
+      if (chg) { chg.classList.remove('up'); chg.classList.remove('down'); }
+      return;
+    }
+
+    var first = _points[0].v;
+    var last  = _points[_points.length - 1].v;
+    var delta = last - first;
+    var deltaPct = first > 0 ? (delta / first * 100) : 0;
+    var up = delta >= 0;
+
+    if (val) val.textContent = fmtMoney(convertedValue(last), _currency);
+    if (amt) amt.textContent = (up ? '+' : '-') + fmtMoney(Math.abs(convertedValue(delta)), _currency);
+    if (pct) pct.textContent = (up ? '+' : '-') + Math.abs(deltaPct).toFixed(2) + '%';
+    if (chg) {
+      chg.classList.toggle('up', up && delta !== 0);
+      chg.classList.toggle('down', !up);
+    }
+  }
+
+  function render() {
+    renderTopLine();
+    renderChart();
+  }
+
+  /* ── find dashboard container ────────────────────── */
+  function isDashActive() {
+    var ok = false;
+    document.querySelectorAll('button').forEach(function(b) {
+      if (b.closest && b.closest('#pp-v20-header')) return;
+      if (b.textContent.trim() === 'דשבורד' &&
+          b.className && b.className.indexOf('border-violet-500') !== -1) ok = true;
+    });
+    return ok;
+  }
+
+  function buildCard() {
+    var card = document.createElement('div');
+    card.id = CARD_ID;
+    card.innerHTML =
+      '<div id="pp-v21-chart-top">' +
+        '<div>' +
+          '<div class="pp-v21-tw-label">שווי תיק</div>' +
+          '<div id="pp-v21-tw-value">—</div>' +
+          '<div id="pp-v21-tw-change">' +
+            '<span id="pp-v21-tw-amt"></span>' +
+            '<span id="pp-v21-tw-pct"></span>' +
+          '</div>' +
+        '</div>' +
+        '<div id="pp-v21-currency" title="לחץ כדי להחליף מטבע">' + _currency + '</div>' +
+      '</div>' +
+      '<div id="pp-v21-chart-wrap">' +
+        '<div class="pp-v21-axis-label" id="pp-v21-axis-hi"></div>' +
+        '<div class="pp-v21-axis-label" id="pp-v21-axis-lo"></div>' +
+        '<svg id="pp-v21-chart-svg" preserveAspectRatio="none"></svg>' +
+        '<div id="pp-v21-chart-empty">טוען...</div>' +
+      '</div>' +
+      '<div id="pp-v21-ranges"></div>';
+
+    /* range buttons */
+    var rangesEl = card.querySelector('#pp-v21-ranges');
+    RANGES.forEach(function(r) {
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'pp-v21-range' + (r.id === _range ? ' active' : '');
+      btn.textContent = r.label;
+      btn.addEventListener('click', function() {
+        _range = r.id;
+        try { localStorage.setItem(RANGE_KEY, _range); } catch(e) {}
+        rangesEl.querySelectorAll('.pp-v21-range').forEach(function(b) { b.classList.remove('active'); });
+        btn.classList.add('active');
+        _points = [];
+        render();
+        fetchHistory();
+      });
+      rangesEl.appendChild(btn);
+    });
+
+    /* currency click handler */
+    card.querySelector('#pp-v21-currency').addEventListener('click', function() {
+      _currency = _currency === 'USD' ? 'ILS' : 'USD';
+      try { localStorage.setItem(CURR_KEY, _currency); } catch(e) {}
+      if (_currency === 'ILS' && !_fxRate) fetchFx();
+      render();
+    });
+
+    /* also toggle currency when clicking the big value */
+    card.querySelector('#pp-v21-tw-value').addEventListener('click', function() {
+      _currency = _currency === 'USD' ? 'ILS' : 'USD';
+      try { localStorage.setItem(CURR_KEY, _currency); } catch(e) {}
+      if (_currency === 'ILS' && !_fxRate) fetchFx();
+      render();
+    });
+
+    return card;
+  }
+
+  var _injected = false;
+  function inject() {
+    if (document.getElementById(CARD_ID)) { _injected = true; return true; }
+    if (!isDashActive()) return false;
+
+    var main = document.querySelector('main');
+    if (!main) return false;
+
+    var card = buildCard();
+    /* insert at the very top of main so it fills empty header space */
+    if (main.firstChild) main.insertBefore(card, main.firstChild);
+    else                 main.appendChild(card);
+
+    _injected = true;
+    render();
+    fetchHistory();
+    fetchFx();
+    return true;
+  }
+
+  function maybeRemove() {
+    if (!isDashActive()) {
+      var card = document.getElementById(CARD_ID);
+      if (card && card.parentNode) card.parentNode.removeChild(card);
+      _injected = false;
+    }
+  }
+
+  /* ── boot ────────────────────────────────────────── */
+  var _deb21 = null;
+  var obs21 = new MutationObserver(function() {
+    clearTimeout(_deb21);
+    _deb21 = setTimeout(function() {
+      if (!_injected) inject();
+      else            maybeRemove();
+    }, 250);
+  });
+  obs21.observe(document.body, { childList: true, subtree: true });
+
+  /* refresh chart when prices update */
+  window.addEventListener('storage', function(e) {
+    if (e.key === 'primo_portfolio_v6' && _injected) {
+      /* shares may have changed → re-fetch */
+      fetchHistory();
+    }
+    if (e.key === 'pp_v21_currency') {
+      _currency = e.newValue === 'ILS' ? 'ILS' : 'USD';
+      if (_currency === 'ILS' && !_fxRate) fetchFx();
+      render();
+    }
+  });
+
+  setTimeout(function() {
+    if (!inject()) {
+      var retry = setInterval(function() {
+        if (inject()) clearInterval(retry);
+      }, 500);
+    }
+  }, 2000);
+
+  /* periodic re-fetch every 5 min for real-time feel */
+  setInterval(function() {
+    if (_injected && isDashActive()) fetchHistory();
+  }, 5 * 60 * 1000);
+
+})();
+</script>
+
 </body></html>
