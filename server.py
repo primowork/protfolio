@@ -345,9 +345,19 @@ async def get_fundamentals(symbols: str = ""):
             pb = info.get("priceToBook")
             if pb and pb > 0:
                 result["priceToBook"] = round(float(pb), 2)
-            dy = info.get("dividendYield") or info.get("trailingAnnualDividendYield") or 0
-            if dy and float(dy) > 0:
-                result["dividendYield"] = round(float(dy) * 100, 2)
+            # Dividend yield: compute from dividendRate / price (reliable across yfinance versions).
+            # Fallback to info.dividendYield with version-aware scaling: yfinance >=0.2.40
+            # returns it as a percentage (1.39), older versions as decimal (0.0139).
+            div_rate = info.get("dividendRate") or info.get("trailingAnnualDividendRate")
+            price = info.get("currentPrice") or info.get("regularMarketPrice")
+            if div_rate and price and float(price) > 0:
+                result["dividendYield"] = round(float(div_rate) / float(price) * 100, 2)
+            else:
+                dy = info.get("dividendYield") or info.get("trailingAnnualDividendYield") or 0
+                if dy and float(dy) > 0:
+                    dy_val = float(dy)
+                    # If > 1, it's already a percentage (no legit stock has >100% decimal yield)
+                    result["dividendYield"] = round(dy_val if dy_val > 1 else dy_val * 100, 2)
             pr = info.get("payoutRatio")
             if pr is not None:
                 try:
