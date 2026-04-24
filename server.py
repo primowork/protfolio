@@ -572,12 +572,47 @@ async def get_premarket(symbols: str = ""):
 # ═══════════════════════════════════════════════════════════════════
 
 def _check_price_move(sym: str, fi) -> list:
-    """Alert when daily price move ≥ 5%."""
+    """Alert when daily price move ≥ 5%.
+
+    yfinance's fast_info.previous_close is unreliable (sometimes stale / wrong
+    by days). We prefer the second-to-last close from daily history, and
+    cross-check against year_high to detect inconsistent data.
+    """
     try:
         price = fi.last_price
-        prev  = fi.previous_close
-        if not price or not prev or prev == 0:
+        if not price:
             return []
+
+        # Reliable previous close from daily history
+        prev = None
+        try:
+            hist = yf.Ticker(sym).history(period="5d", auto_adjust=False)
+            closes = hist["Close"].dropna()
+            if len(closes) >= 2:
+                import datetime as _dt
+                last_date = hist.index[-1].date()
+                today     = _dt.datetime.now().date()
+                # If today's session already has a close bar, use the prior one
+                if last_date >= today and len(closes) >= 2:
+                    prev = float(closes.iloc[-2])
+                else:
+                    prev = float(closes.iloc[-1])
+        except Exception:
+            pass
+
+        # fallback to fast_info only if history failed
+        if prev is None or prev == 0:
+            prev = fi.previous_close
+        if not prev or prev == 0:
+            return []
+
+        # Sanity check: previous close can never exceed 52-week high
+        year_high = getattr(fi, "year_high", None)
+        if year_high and prev > year_high * 1.01:
+            # Data inconsistency — skip rather than emit a bogus alert
+            logging.debug(f"price_move {sym}: prev_close {prev} > year_high {year_high}, skipping")
+            return []
+
         pct = (price - prev) / prev * 100
         if abs(pct) < 5:
             return []
