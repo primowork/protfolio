@@ -4811,7 +4811,9 @@
   }
 
   /* ── Main auth flow ───────────────────────────────── */
+  // Build overlay but keep hidden until we confirm OAuth is configured
   var overlay = buildOverlay();
+  overlay.style.display = 'none';
 
   // Show error from URL param if redirected back with error
   var urlParams = new URLSearchParams(window.location.search);
@@ -4830,45 +4832,54 @@
     window.history.replaceState({}, '', '/');
   }
 
-  fetch('/api/me', {credentials: 'include'})
-    .then(function (r) {
-      if (r.status === 401) return null;  // not logged in → keep overlay
-      return r.json();
+  // First check if OAuth is actually configured before blocking the app
+  fetch('/api/auth-config', {credentials: 'include'})
+    .then(function (r) { return r.ok ? r.json() : {google: false, apple: false}; })
+    .then(function (cfg) {
+      if (!cfg.google && !cfg.apple) {
+        // No OAuth configured → run app without auth (dev / unconfigured)
+        return;
+      }
+      // At least one provider configured → show overlay and check session
+      overlay.style.display = 'flex';
+
+      fetch('/api/me', {credentials: 'include'})
+        .then(function (r) {
+          if (r.status === 401) return null;  // not logged in → keep overlay
+          return r.json();
+        })
+        .then(function (user) {
+          if (!user) return;  // not authed — overlay stays visible
+
+          // Authenticated — hide overlay and show user badge
+          overlay.style.display = 'none';
+          injectUserBadge(user);
+
+          // Sync portfolio
+          return fetch('/api/user/portfolio', {credentials: 'include'})
+            .then(function (r) { return r.ok ? r.json() : null; })
+            .then(function (resp) {
+              var serverData = resp && resp.portfolio;
+
+              if (serverData && !_reloaded) {
+                // Server has data → load into localStorage and reload once so React sees it
+                localStorage.setItem(PORTFOLIO_KEY, JSON.stringify(serverData));
+                localStorage.setItem(SYNCED_KEY, '1');
+                sessionStorage.setItem('pp_auth_reload', '1');
+                window.location.reload();
+              } else if (!serverData) {
+                // New user — upload existing localStorage data
+                var local = localStorage.getItem(PORTFOLIO_KEY);
+                if (local) pushPortfolio(local);
+                localStorage.setItem(SYNCED_KEY, '1');
+              } else {
+                localStorage.setItem(SYNCED_KEY, '1');
+              }
+            });
+        })
+        .catch(function () { overlay.style.display = 'none'; });
     })
-    .then(function (user) {
-      if (!user) return;  // still not authed
-
-      // Authenticated — hide overlay and show user badge
-      overlay.style.display = 'none';
-      injectUserBadge(user);
-
-      // Sync portfolio
-      return fetch('/api/user/portfolio', {credentials: 'include'})
-        .then(function (r) { return r.ok ? r.json() : null; })
-        .then(function (resp) {
-          var serverData = resp && resp.portfolio;
-
-          if (serverData && !_reloaded) {
-            // Server has data → load into localStorage and reload once so React sees it
-            localStorage.setItem(PORTFOLIO_KEY, JSON.stringify(serverData));
-            localStorage.setItem(SYNCED_KEY, '1');
-            sessionStorage.setItem('pp_auth_reload', '1');
-            window.location.reload();
-          } else if (!serverData) {
-            // New user — upload existing localStorage data (or empty)
-            var local = localStorage.getItem(PORTFOLIO_KEY);
-            if (local) pushPortfolio(local);
-            localStorage.setItem(SYNCED_KEY, '1');
-          } else {
-            // Reloaded after sync — just mark synced
-            localStorage.setItem(SYNCED_KEY, '1');
-          }
-        });
-    })
-    .catch(function () {
-      // Network error or server down — show app anyway
-      overlay.style.display = 'none';
-    });
+    .catch(function () { /* server unreachable — show app as-is */ });
 
   /* ── Intercept localStorage writes for continuous sync ── */
   var _origSetItem = localStorage.setItem.bind(localStorage);
