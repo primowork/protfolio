@@ -317,8 +317,9 @@
     /* initialise state once for the lifetime of the page */
     if (!_state) _state = { sortKey: 'value', sortDir: -1, dayMode: '%' };
 
-    /* rebuild click handlers only when the <table> element itself is new */
-    if (!_headersBuilt.has(table)) {
+    /* rebuild click handlers when table is new OR React wiped the header classes */
+    var headersIntact = ths.some(function(th){ return th.classList.contains('pp-th'); });
+    if (!_headersBuilt.has(table) || !headersIntact) {
       _headersBuilt.add(table);
       buildHeaders(table, ths, _state);
     }
@@ -391,14 +392,18 @@
       document.querySelectorAll('table').forEach(enhance);
       injectRateBadge();
       markDetailRows();
-    }, 300);
+    }, 100);
   });
   obs.observe(document.body, { childList: true, subtree: true });
 
   setTimeout(function() {
     document.querySelectorAll('table').forEach(enhance);
     injectRateBadge();
-  }, 1200);
+  }, 800);
+  /* guaranteed fallback at 400ms — beats React re-mount delays */
+  setInterval(function() {
+    document.querySelectorAll('table').forEach(enhance);
+  }, 400);
 
 })();
 </script>
@@ -5236,12 +5241,12 @@ body:not(:has(#pp-v21-chart-card)) #pp-v20-portfolio {
   to { transform: rotate(360deg); }
 }
 
-/* ── NAV BAR ─────────────────────────────────────────── */
+/* ── NAV BAR — pill-style tabs ─────────────────────────── */
 #pp-v20-nav {
   display: flex;
   align-items: center;
-  gap: 2px;
-  padding: 0 24px;
+  gap: 8px;
+  padding: 10px 24px;
   border-top: 1px solid var(--v20-border);
   overflow-x: auto;
   scrollbar-width: none;
@@ -5249,28 +5254,35 @@ body:not(:has(#pp-v21-chart-card)) #pp-v20-portfolio {
 #pp-v20-nav::-webkit-scrollbar { display: none; }
 
 .pp-v20-tab {
-  position: relative;
-  padding: 10px 14px;
-  font-size: 13px;
+  padding: 8px 20px;
+  font-size: 14px;
   color: var(--v20-muted);
   cursor: pointer;
-  border: none;
-  background: none;
-  border-bottom: 2px solid transparent;
-  margin-bottom: -1px;
-  transition: color 0.15s ease, border-color 0.15s ease;
+  border: 2px solid transparent;
+  background: rgba(255,255,255,0.05);
+  border-radius: 999px;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
   white-space: nowrap;
   font-family: inherit;
   direction: rtl;
-}
-.pp-v20-tab:hover { color: var(--v20-text); }
-.pp-v20-tab.active {
-  color: var(--v20-text);
-  border-bottom-color: var(--v20-accent);
   font-weight: 500;
+}
+.pp-v20-tab:hover {
+  color: var(--v20-text);
+  background: rgba(255,255,255,0.09);
+}
+.pp-v20-tab.active {
+  background: #ffffff;
+  color: #0e0f11;
+  border-color: var(--v20-accent);
+  font-weight: 600;
+}
+.pp-v20-tab.active:hover {
+  background: #ffffff;
+  color: #0e0f11;
 }
 .pp-v20-tab-badge {
   width: 5px; height: 5px;
@@ -5279,8 +5291,9 @@ body:not(:has(#pp-v21-chart-card)) #pp-v20-portfolio {
   display: inline-block;
 }
 .pp-v20-tab.alerts.active {
+  background: #ffffff;
   color: var(--v20-red);
-  border-bottom-color: var(--v20-red);
+  border-color: var(--v20-red);
 }
 .pp-v20-tab.alerts.active .pp-v20-tab-badge { background: var(--v20-red); }
 
@@ -5551,6 +5564,11 @@ body:not(:has(#pp-v21-chart-card)) #pp-v20-portfolio {
       '</button>';
     hdr.appendChild(pv);
 
+    /* CHART SLOT — v21 injects its chart here, guaranteeing it lives above the nav */
+    var chartSlot = document.createElement('div');
+    chartSlot.id = 'pp-v20-chart-slot';
+    hdr.appendChild(chartSlot);
+
     /* NAV BAR */
     var nav = document.createElement('div');
     nav.id = 'pp-v20-nav';
@@ -5696,6 +5714,7 @@ body:not(:has(#pp-v21-chart-card)) #pp-v20-portfolio {
   obs20.observe(document.body, { childList: true, subtree: true });
 
   setInterval(syncMarket, 1000);
+  setInterval(syncTabs, 600);   /* keep active-tab highlight in sync reliably */
   setInterval(fetchFx, 5 * 60 * 1000);
 
   window.addEventListener('storage', function(e) {
@@ -5718,11 +5737,12 @@ body:not(:has(#pp-v21-chart-card)) #pp-v20-portfolio {
    ======================================================= */
 
 #pp-v21-chart-card {
-  margin: 10px 16px;
-  background: hsl(222,14%,10%);
-  border: 1px solid hsl(222,14%,18%);
-  border-radius: 14px;
-  padding: 18px 24px 14px;
+  margin: 0;
+  background: hsl(222,16%,10%);
+  border: none;
+  border-top: 1px solid rgba(255,255,255,0.07);
+  border-radius: 0;
+  padding: 14px 24px 12px;
   direction: rtl;
   font-family: 'DM Sans', ui-sans-serif, system-ui, sans-serif;
 }
@@ -6147,13 +6167,12 @@ body:not(:has(#pp-v21-chart-card)) #pp-v20-portfolio {
     if (document.getElementById(CARD_ID)) { _injected = true; return true; }
     if (!isDashActive()) return false;
 
-    var main = document.querySelector('main');
-    if (!main) return false;
+    /* require the dedicated v20 chart slot — guarantees position above nav */
+    var slot = document.getElementById('pp-v20-chart-slot');
+    if (!slot) return false;
 
     var card = buildCard();
-    /* insert at the very top of main so it fills empty header space */
-    if (main.firstChild) main.insertBefore(card, main.firstChild);
-    else                 main.appendChild(card);
+    slot.appendChild(card);
 
     _injected = true;
     render();
@@ -6194,13 +6213,14 @@ body:not(:has(#pp-v21-chart-card)) #pp-v20-portfolio {
     }
   });
 
+  /* start after v20 header is guaranteed to exist (v20 injects at ~1500ms) */
   setTimeout(function() {
     if (!inject()) {
       var retry = setInterval(function() {
         if (inject()) clearInterval(retry);
-      }, 500);
+      }, 200);
     }
-  }, 2000);
+  }, 2200);
 
   /* periodic re-fetch every 5 min for real-time feel */
   setInterval(function() {
