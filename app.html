@@ -5241,12 +5241,12 @@ body:not(:has(#pp-v21-chart-card)) #pp-v20-portfolio {
   to { transform: rotate(360deg); }
 }
 
-/* ── NAV BAR ─────────────────────────────────────────── */
+/* ── NAV BAR — pill-style tabs ─────────────────────────── */
 #pp-v20-nav {
   display: flex;
   align-items: center;
-  gap: 2px;
-  padding: 0 24px;
+  gap: 8px;
+  padding: 10px 24px;
   border-top: 1px solid var(--v20-border);
   overflow-x: auto;
   scrollbar-width: none;
@@ -5254,29 +5254,35 @@ body:not(:has(#pp-v21-chart-card)) #pp-v20-portfolio {
 #pp-v20-nav::-webkit-scrollbar { display: none; }
 
 .pp-v20-tab {
-  position: relative;
-  padding: 10px 14px;
-  font-size: 13px;
+  padding: 8px 20px;
+  font-size: 14px;
   color: var(--v20-muted);
   cursor: pointer;
-  border: none;
-  background: none;
-  border-bottom: 2px solid transparent;
-  margin-bottom: -1px;
-  transition: color 0.15s ease, border-color 0.15s ease;
+  border: 2px solid transparent;
+  background: rgba(255,255,255,0.05);
+  border-radius: 999px;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
   white-space: nowrap;
   font-family: inherit;
   direction: rtl;
+  font-weight: 500;
 }
-.pp-v20-tab:hover { color: var(--v20-text); }
+.pp-v20-tab:hover {
+  color: var(--v20-text);
+  background: rgba(255,255,255,0.09);
+}
 .pp-v20-tab.active {
-  color: #ffffff;
-  border-bottom-color: var(--v20-accent);
-  border-bottom-width: 3px;
+  background: #ffffff;
+  color: #0e0f11;
+  border-color: var(--v20-accent);
   font-weight: 600;
+}
+.pp-v20-tab.active:hover {
+  background: #ffffff;
+  color: #0e0f11;
 }
 .pp-v20-tab-badge {
   width: 5px; height: 5px;
@@ -5285,8 +5291,9 @@ body:not(:has(#pp-v21-chart-card)) #pp-v20-portfolio {
   display: inline-block;
 }
 .pp-v20-tab.alerts.active {
+  background: #ffffff;
   color: var(--v20-red);
-  border-bottom-color: var(--v20-red);
+  border-color: var(--v20-red);
 }
 .pp-v20-tab.alerts.active .pp-v20-tab-badge { background: var(--v20-red); }
 
@@ -5556,6 +5563,11 @@ body:not(:has(#pp-v21-chart-card)) #pp-v20-portfolio {
         '<span class="pp-v20-refresh-icon"></span>רענן' +
       '</button>';
     hdr.appendChild(pv);
+
+    /* CHART SLOT — v21 injects its chart here, guaranteeing it lives above the nav */
+    var chartSlot = document.createElement('div');
+    chartSlot.id = 'pp-v20-chart-slot';
+    hdr.appendChild(chartSlot);
 
     /* NAV BAR */
     var nav = document.createElement('div');
@@ -6155,13 +6167,12 @@ body:not(:has(#pp-v21-chart-card)) #pp-v20-portfolio {
     if (document.getElementById(CARD_ID)) { _injected = true; return true; }
     if (!isDashActive()) return false;
 
-    /* require v20 header — never fall back to <main> so chart stays above nav */
-    var hdr = document.getElementById('pp-v20-header');
-    var nav = document.getElementById('pp-v20-nav');
-    if (!hdr || !nav) return false;
+    /* require the dedicated v20 chart slot — guarantees position above nav */
+    var slot = document.getElementById('pp-v20-chart-slot');
+    if (!slot) return false;
 
     var card = buildCard();
-    hdr.insertBefore(card, nav);
+    slot.appendChild(card);
 
     _injected = true;
     render();
