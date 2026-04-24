@@ -4823,6 +4823,32 @@
     window.history.replaceState({}, '', '/');
   }
 
+  var LOGGED_IN_KEY = 'pp_logged_in';
+
+  function onAuthenticated(user) {
+    overlay.style.display = 'none';
+    try { localStorage.setItem(LOGGED_IN_KEY, '1'); } catch(e) {}
+    injectUserBadge(user);
+
+    return fetch('/api/user/portfolio', {credentials: 'include'})
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (resp) {
+        var serverData = resp && resp.portfolio;
+        if (serverData && !_reloaded) {
+          _origSetItem(PORTFOLIO_KEY, JSON.stringify(serverData));
+          _origSetItem(SYNCED_KEY, '1');
+          sessionStorage.setItem('pp_auth_reload', '1');
+          window.location.reload();
+        } else if (!serverData) {
+          var local = localStorage.getItem(PORTFOLIO_KEY);
+          if (local) pushPortfolio(local);
+          _origSetItem(SYNCED_KEY, '1');
+        } else {
+          _origSetItem(SYNCED_KEY, '1');
+        }
+      });
+  }
+
   // First check if OAuth is actually configured before blocking the app
   fetch('/api/auth-config', {credentials: 'include'})
     .then(function (r) { return r.ok ? r.json() : {google: false, apple: false}; })
@@ -4831,44 +4857,30 @@
         // No OAuth configured → run app without auth (dev / unconfigured)
         return;
       }
-      // At least one provider configured → show overlay and check session
-      overlay.style.display = 'flex';
+
+      // Check session silently — only show the login overlay if we confirm not logged in.
+      // If the user was previously logged in (localStorage flag), skip the flash entirely.
+      var wasLoggedIn = false;
+      try { wasLoggedIn = !!localStorage.getItem(LOGGED_IN_KEY); } catch(e) {}
 
       fetch('/api/me', {credentials: 'include'})
         .then(function (r) {
-          if (r.status === 401) return null;  // not logged in → keep overlay
+          if (r.status === 401) return null;
           return r.json();
         })
         .then(function (user) {
-          if (!user) return;  // not authed — overlay stays visible
-
-          // Authenticated — hide overlay and show user badge
-          overlay.style.display = 'none';
-          injectUserBadge(user);
-
-          // Sync portfolio
-          return fetch('/api/user/portfolio', {credentials: 'include'})
-            .then(function (r) { return r.ok ? r.json() : null; })
-            .then(function (resp) {
-              var serverData = resp && resp.portfolio;
-
-              if (serverData && !_reloaded) {
-                // Server has data → load into localStorage and reload once so React sees it
-                localStorage.setItem(PORTFOLIO_KEY, JSON.stringify(serverData));
-                localStorage.setItem(SYNCED_KEY, '1');
-                sessionStorage.setItem('pp_auth_reload', '1');
-                window.location.reload();
-              } else if (!serverData) {
-                // New user — upload existing localStorage data
-                var local = localStorage.getItem(PORTFOLIO_KEY);
-                if (local) pushPortfolio(local);
-                localStorage.setItem(SYNCED_KEY, '1');
-              } else {
-                localStorage.setItem(SYNCED_KEY, '1');
-              }
-            });
+          if (!user) {
+            // Confirmed not logged in — clear flag and show login screen
+            try { localStorage.removeItem(LOGGED_IN_KEY); } catch(e) {}
+            overlay.style.display = 'flex';
+            return;
+          }
+          return onAuthenticated(user);
         })
-        .catch(function () { overlay.style.display = 'none'; });
+        .catch(function () {
+          // Network error — if previously logged in keep app open, else show overlay
+          if (!wasLoggedIn) overlay.style.display = 'flex';
+        });
     })
     .catch(function () { /* server unreachable — show app as-is */ });
 
