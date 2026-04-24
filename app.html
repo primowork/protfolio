@@ -1644,9 +1644,23 @@
     /* asset mgmt */  'BN':1,'BAM':1,'BX':1,'KKR':1,'APO':1,'CG':1,'BLK':1,'SCHW':1,'IBKR':1,'STT':1,'BK':1,
     /* insurance */   'MET':1,'PRU':1,'AIG':1,'CB':1,'ALL':1,'PGR':1,'AFL':1,'HIG':1,'TRV':1,
     /* payments */    'V':1,'MA':1,'AXP':1,'DFS':1,'COF':1,
-    /* berkshire */   'BRK.B':1,'BRK.A':1
+    /* berkshire */   'BRK.B':1,'BRK.A':1,
+    /* REITs */       'WELL':1,'O':1,'AMT':1,'SPG':1,'PLD':1,'EQIX':1,'DLR':1,'PSA':1,'EQR':1,'AVB':1,
+                      'VTR':1,'PEAK':1,'DOC':1,'WPC':1,'NNN':1,'VICI':1,'IRM':1,'SBAC':1,'CCI':1,'MPW':1,
+    /* energy */      'XOM':1,'CVX':1,'COP':1,'EOG':1,'SLB':1,'OXY':1,'VLO':1,'MPC':1,'PSX':1,'PXD':1,'DVN':1,
+    /* utilities */   'NEE':1,'DUK':1,'SO':1,'D':1,'AEP':1,'EXC':1,'WEC':1,'XEL':1,'ETR':1,'FE':1,'AEE':1,'PCG':1,
+    /* classic div */ 'PG':1,'JNJ':1,'KO':1,'PEP':1,'T':1,'VZ':1,'MO':1,'PM':1,'BTI':1,'MMM':1,'CAT':1,'DE':1,'HON':1,'GD':1,'LMT':1
   };
-  function isFin(sym) { return !!VALUE_FIN_SET[sym]; }
+  /* user overrides stored in localStorage: pp_cat_SYM = 'fin' | 'tech' */
+  function isFin(sym) {
+    try {
+      var ov = localStorage.getItem('pp_cat_' + sym);
+      if (ov === 'fin')  return true;
+      if (ov === 'tech') return false;
+    } catch(e) {}
+    return !!VALUE_FIN_SET[sym];
+  }
+  function isHardcodedCat(sym) { return !!VALUE_FIN_SET[sym]; }
   var FIN_BADGE = '<span style="font-size:10px;padding:0 4px;border-radius:3px;background:#1e3a5f;color:#60a5fa;border:1px solid #3b82f640;margin-right:3px;">🏦</span>';
 
   function isInsightsTab() {
@@ -2455,6 +2469,31 @@
           '<div style="width:' + pct + '%;height:100%;background:' + c + ';border-radius:3px;"></div></div>' +
           '<span style="font-size:14px;font-weight:700;color:' + c + ';min-width:36px;text-align:left;">' + (noData ? '—' : sc.passes + '/' + sc.total) + '</span>' +
           '<span style="font-size:11px;color:#475569;">▼</span>';
+
+        /* category override dropdown — only for tickers not in hardcoded set */
+        if (!isHardcodedCat(s)) {
+          var sel = document.createElement('select');
+          sel.title = 'שנה קטגוריה';
+          sel.style.cssText = 'font-size:11px;padding:1px 4px;border-radius:4px;border:1px solid hsl(222,14%,28%);' +
+            'background:hsl(222,14%,14%);color:#94a3b8;cursor:pointer;direction:rtl;';
+          var optT = document.createElement('option');
+          optT.value = 'tech'; optT.textContent = '🚀 טק';
+          var optF = document.createElement('option');
+          optF.value = 'fin'; optF.textContent = '🏦 ערך';
+          sel.appendChild(optT); sel.appendChild(optF);
+          try {
+            var stored = localStorage.getItem('pp_cat_' + s);
+            sel.value = stored === 'fin' ? 'fin' : 'tech';
+          } catch(e) { sel.value = 'tech'; }
+          sel.addEventListener('click', function(e) { e.stopPropagation(); });
+          sel.addEventListener('change', function(e) {
+            e.stopPropagation();
+            try { localStorage.setItem('pp_cat_' + s, sel.value); } catch(e2) {}
+            location.reload();
+          });
+          row.appendChild(sel);
+        }
+
         rowWrap.appendChild(row);
 
         /* detail row — hidden by default */
