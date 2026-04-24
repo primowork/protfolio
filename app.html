@@ -2778,6 +2778,8 @@
   });
   obs10.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
   setTimeout(injectBoxes, 2500);
+  /* guaranteed fallback — fires every 1.2 s regardless of mutation storms */
+  setInterval(injectBoxes, 1200);
 
 })();
 </script>
