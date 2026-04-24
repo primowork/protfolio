@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, JSONResponse
+from starlette.middleware.sessions import SessionMiddleware
 import uvicorn, logging, asyncio, os, json, time
 from datetime import datetime, timedelta
 import concurrent.futures
@@ -14,6 +15,7 @@ except ImportError:
     pass
 
 from polygon_stream import stream as polygon_stream
+from auth import router as auth_router, init_db
 
 logging.basicConfig(level=logging.INFO)
 
@@ -63,7 +65,7 @@ ALERTS_TTL = 300
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Wire broadcast callback BEFORE starting the stream
+    await init_db()
     polygon_stream._on_batch = ws_manager.broadcast
     task = asyncio.create_task(polygon_stream.run())
     yield
@@ -71,6 +73,15 @@ async def lifespan(app: FastAPI):
     task.cancel()
 
 app = FastAPI(lifespan=lifespan)
+
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=os.getenv("SESSION_SECRET", "dev-secret-CHANGE-IN-PRODUCTION"),
+    https_only=os.getenv("SESSION_HTTPS_ONLY", "false").lower() == "true",
+    same_site="lax",
+    max_age=30 * 24 * 3600,
+)
+app.include_router(auth_router)
 
 _dir = os.path.dirname(os.path.abspath(__file__))
 with open(os.path.join(_dir, "app.html"), "r", encoding="utf-8") as f:

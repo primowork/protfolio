@@ -83,11 +83,13 @@
       localStorage.setItem(KEY, raw);
     }
     var state = raw ? JSON.parse(raw) : {};
-    state.ilsDeposits = DEPOSITS;
+    /* when server data has been loaded, skip default seeding */
+    var _srvSynced = !!localStorage.getItem('pp_server_synced');
+    if (!_srvSynced) state.ilsDeposits = DEPOSITS;
     /* ensure required fields exist so React never crashes on first visit */
     if (!Array.isArray(state.transactions)) state.transactions = [];
-    /* seed holdings only when empty — never overwrite user-entered data */
-    if (state.transactions.length === 0) state.transactions = TRANSACTIONS;
+    /* seed holdings only when empty AND not loaded from server */
+    if (!_srvSynced && state.transactions.length === 0) state.transactions = TRANSACTIONS;
     if (!Array.isArray(state.snapshots))    state.snapshots    = [];
     if (!state.prices)                      state.prices       = {};
     if (!state.prevClose)                   state.prevClose    = {};
@@ -4693,6 +4695,191 @@
   obs21.observe(document.body, { childList: true, subtree: true });
   setTimeout(patchQuote, 500);
   setTimeout(patchQuote, 2000);
+
+})();
+</script>
+
+<script>
+/* =======================================================
+   Primo Portfolio — Auth Module v1
+   Google OAuth + Apple Sign In (coming soon)
+   Per-user server-side portfolio persistence
+   ======================================================= */
+(function () {
+  'use strict';
+
+  var PORTFOLIO_KEY = 'primo_portfolio_v6';
+  var SYNCED_KEY    = 'pp_server_synced';
+  var _reloaded     = sessionStorage.getItem('pp_auth_reload');
+
+  /* ── Build login overlay ──────────────────────────── */
+  function buildOverlay() {
+    var ov = document.createElement('div');
+    ov.id = 'auth-overlay';
+    ov.style.cssText = 'position:fixed;inset:0;z-index:9999;background:hsl(222,20%,5%);' +
+      'display:flex;align-items:center;justify-content:center;direction:rtl;';
+
+    var googleSvg = '<svg width="18" height="18" viewBox="0 0 48 48" style="flex-shrink:0">' +
+      '<path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>' +
+      '<path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>' +
+      '<path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>' +
+      '<path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>' +
+      '</svg>';
+
+    var appleSvg = '<svg width="16" height="16" viewBox="0 0 814 1000" style="flex-shrink:0">' +
+      '<path fill="currentColor" d="M788.1 340.9c-5.8 4.5-108.2 62.2-108.2 190.5 0 148.4 130.3 200.9 134.2 202.2-.6 3.2-20.7 71.9-68.7 141.9-42.8 61.6-87.5 123.1-155.5 123.1s-85.5-39.5-164-39.5c-76 0-103.7 40.8-165.9 40.8s-105.7-57.5-152.8-113.2C107 551.1 52.3 451.6 52.3 357.1c0-155.1 101-237 194.2-237 71.9 0 132.6 47.4 179.8 47.4 45.2 0 115.2-50 197.5-50 30.3 0 108.2 2.6 165.9 68.4z"/>' +
+      '</svg>';
+
+    ov.innerHTML =
+      '<div style="background:hsl(222,14%,10%);border:1px solid hsl(222,14%,22%);' +
+        'border-radius:18px;padding:48px 40px;text-align:center;max-width:380px;' +
+        'width:90%;box-shadow:0 24px 64px rgba(0,0,0,.6);">' +
+      '<div style="font-size:52px;margin-bottom:10px;">📊</div>' +
+      '<h1 style="color:#e2e8f0;font-size:22px;font-weight:700;margin:0 0 8px;' +
+        'font-family:system-ui,sans-serif;">פרימו פורטפוליו</h1>' +
+      '<p style="color:#64748b;font-size:14px;margin:0 0 36px;' +
+        'font-family:system-ui,sans-serif;">נהל את התיק שלך בצורה חכמה</p>' +
+      '<a href="/auth/google" id="pp-google-btn" style="' +
+        'display:flex;align-items:center;justify-content:center;gap:12px;' +
+        'padding:13px 24px;border-radius:9px;background:#fff;color:#1f2937;' +
+        'font-size:15px;font-weight:600;text-decoration:none;margin-bottom:14px;' +
+        'font-family:system-ui,sans-serif;transition:opacity .15s;">' +
+        googleSvg + 'המשך עם Google' +
+      '</a>' +
+      '<button disabled style="' +
+        'display:flex;align-items:center;justify-content:center;gap:10px;' +
+        'padding:13px 24px;border-radius:9px;background:hsl(222,14%,16%);' +
+        'color:#64748b;font-size:15px;font-weight:600;' +
+        'border:1px solid hsl(222,14%,25%);width:100%;cursor:not-allowed;' +
+        'font-family:system-ui,sans-serif;opacity:.55;">' +
+        appleSvg +
+        '<span>Sign in with Apple</span>' +
+        '<span style="font-size:11px;">(בקרוב)</span>' +
+      '</button>' +
+      '<p id="pp-auth-err" style="color:#f87171;font-size:13px;margin:16px 0 0;' +
+        'display:none;font-family:system-ui,sans-serif;"></p>' +
+      '</div>';
+
+    document.body.appendChild(ov);
+    return ov;
+  }
+
+  /* ── Push portfolio data to server ───────────────── */
+  function pushPortfolio(data) {
+    try {
+      var payload = typeof data === 'string' ? JSON.parse(data) : data;
+      fetch('/api/user/portfolio', {
+        method: 'POST', credentials: 'include',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({portfolio: payload})
+      }).catch(function() {});
+    } catch (e) {}
+  }
+
+  /* ── Inject user badge (floating, top-right) ──────── */
+  function injectUserBadge(user) {
+    if (document.getElementById('pp-user-badge')) return;
+    var badge = document.createElement('div');
+    badge.id = 'pp-user-badge';
+    badge.style.cssText =
+      'position:fixed;top:10px;left:10px;z-index:1002;' +
+      'display:flex;align-items:center;gap:8px;' +
+      'padding:4px 12px 4px 4px;border-radius:9px;' +
+      'background:hsl(222,14%,13%);border:1px solid hsl(222,14%,22%);' +
+      'cursor:pointer;direction:rtl;font-family:system-ui,sans-serif;';
+
+    var imgHtml = user.picture
+      ? '<img src="' + user.picture + '" width="26" height="26" ' +
+        'style="border-radius:50%;flex-shrink:0;" referrerpolicy="no-referrer">'
+      : '<div style="width:26px;height:26px;border-radius:50%;' +
+        'background:hsl(222,14%,28%);display:flex;align-items:center;' +
+        'justify-content:center;color:#e2e8f0;font-size:13px;flex-shrink:0;">👤</div>';
+
+    var displayName = (user.name || user.email || '').split(' ')[0] || 'משתמש';
+    badge.innerHTML = imgHtml +
+      '<span style="color:#cbd5e1;font-size:13px;font-weight:600;">' +
+        displayName + '</span>';
+    badge.title = (user.email || '') + '\nלחץ לצאת';
+    badge.addEventListener('click', function () {
+      if (confirm('להתנתק מהחשבון?')) {
+        localStorage.removeItem(SYNCED_KEY);
+        sessionStorage.removeItem('pp_auth_reload');
+        window.location.href = '/auth/logout';
+      }
+    });
+    document.body.appendChild(badge);
+  }
+
+  /* ── Main auth flow ───────────────────────────────── */
+  var overlay = buildOverlay();
+
+  // Show error from URL param if redirected back with error
+  var urlParams = new URLSearchParams(window.location.search);
+  var authErr = urlParams.get('auth_error');
+  if (authErr) {
+    var errEl = document.getElementById('pp-auth-err');
+    if (errEl) {
+      var errMsgs = {
+        cancelled:            'ההתחברות בוטלה.',
+        apple_not_configured: 'Apple Sign In אינו מוגדר עדיין.',
+        apple_failed:         'שגיאה בהתחברות דרך Apple. נסה שנית.',
+      };
+      errEl.textContent = errMsgs[authErr] || 'שגיאה בהתחברות — נסה שנית.';
+      errEl.style.display = 'block';
+    }
+    window.history.replaceState({}, '', '/');
+  }
+
+  fetch('/api/me', {credentials: 'include'})
+    .then(function (r) {
+      if (r.status === 401) return null;  // not logged in → keep overlay
+      return r.json();
+    })
+    .then(function (user) {
+      if (!user) return;  // still not authed
+
+      // Authenticated — hide overlay and show user badge
+      overlay.style.display = 'none';
+      injectUserBadge(user);
+
+      // Sync portfolio
+      return fetch('/api/user/portfolio', {credentials: 'include'})
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (resp) {
+          var serverData = resp && resp.portfolio;
+
+          if (serverData && !_reloaded) {
+            // Server has data → load into localStorage and reload once so React sees it
+            localStorage.setItem(PORTFOLIO_KEY, JSON.stringify(serverData));
+            localStorage.setItem(SYNCED_KEY, '1');
+            sessionStorage.setItem('pp_auth_reload', '1');
+            window.location.reload();
+          } else if (!serverData) {
+            // New user — upload existing localStorage data (or empty)
+            var local = localStorage.getItem(PORTFOLIO_KEY);
+            if (local) pushPortfolio(local);
+            localStorage.setItem(SYNCED_KEY, '1');
+          } else {
+            // Reloaded after sync — just mark synced
+            localStorage.setItem(SYNCED_KEY, '1');
+          }
+        });
+    })
+    .catch(function () {
+      // Network error or server down — show app anyway
+      overlay.style.display = 'none';
+    });
+
+  /* ── Intercept localStorage writes for continuous sync ── */
+  var _origSetItem = localStorage.setItem.bind(localStorage);
+  var _syncTimer = null;
+  localStorage.setItem = function (key, value) {
+    _origSetItem(key, value);
+    if (key === PORTFOLIO_KEY && localStorage.getItem(SYNCED_KEY)) {
+      clearTimeout(_syncTimer);
+      _syncTimer = setTimeout(function () { pushPortfolio(value); }, 2000);
+    }
+  };
 
 })();
 </script>
