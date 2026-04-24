@@ -392,18 +392,18 @@
       document.querySelectorAll('table').forEach(enhance);
       injectRateBadge();
       markDetailRows();
-    }, 300);
+    }, 100);
   });
   obs.observe(document.body, { childList: true, subtree: true });
 
   setTimeout(function() {
     document.querySelectorAll('table').forEach(enhance);
     injectRateBadge();
-  }, 1200);
-  /* guaranteed fallback — fixes debounce storms resetting headers */
+  }, 800);
+  /* guaranteed fallback at 400ms — beats React re-mount delays */
   setInterval(function() {
     document.querySelectorAll('table').forEach(enhance);
-  }, 1200);
+  }, 400);
 
 })();
 </script>
