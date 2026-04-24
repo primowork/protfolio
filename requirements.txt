@@ -5,3 +5,7 @@ yfinance
 websockets
 orjson
 python-dotenv
+itsdangerous
+sqlalchemy
+aiosqlite
+PyJWT[crypto]
