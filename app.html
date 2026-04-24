@@ -1661,6 +1661,11 @@
     return !!VALUE_FIN_SET[sym];
   }
   function isHardcodedCat(sym) { return !!VALUE_FIN_SET[sym]; }
+  var REIT_SET = {
+    'WELL':1,'O':1,'AMT':1,'SPG':1,'PLD':1,'EQIX':1,'DLR':1,'PSA':1,'EQR':1,'AVB':1,
+    'VTR':1,'PEAK':1,'DOC':1,'WPC':1,'NNN':1,'VICI':1,'IRM':1,'SBAC':1,'CCI':1,'MPW':1
+  };
+  function isREIT(sym) { return !!REIT_SET[sym]; }
   var FIN_BADGE = '<span style="font-size:10px;padding:0 4px;border-radius:3px;background:#1e3a5f;color:#60a5fa;border:1px solid #3b82f640;margin-right:3px;">🏦</span>';
 
   function isInsightsTab() {
@@ -1918,18 +1923,25 @@
     var p = peD[sym], r = revD[sym], g = gmD[sym], fd = fundD[sym];
     var m = ma200D[sym], ins = insD[sym], gt = growD[sym];
     var fin = isFin(sym);
-    var SNAMES = fin
-      ? ['📈 ROE','💰 P/B','💎 דיבידנד','🛡️ ROA','🚀 מומנטום','📉 מגמה']
-      : ['📈 צמיחה','💰 תמחור','💎 איכות','🛡️ סיכון','🚀 מומנטום','📉 מגמה'];
+    var reit = isREIT(sym);
+    var SNAMES = filterNames(sym);
     var slots = [null, null, null, null, null, null];
 
     if (fin) {
-      /* F1: ROE */
-      if (fd && fd.roe != null) slots[0] = { pass: fd.roe > 12, val: 'ROE ' + fd.roe + '%' };
+      /* F1: FFO Growth (REITs) | ROE (other financials) */
+      if (reit) {
+        if (fd && fd.ffoGrowth != null) slots[0] = { pass: fd.ffoGrowth > 5, val: 'FFO +' + fd.ffoGrowth + '%' };
+        /* else stays null — N/A, no fallback */
+      } else {
+        if (fd && fd.roe != null) slots[0] = { pass: fd.roe > 12, val: 'ROE ' + fd.roe + '%' };
+      }
       /* F2: P/B */
       if (fd && fd.priceToBook != null) slots[1] = { pass: fd.priceToBook < 2, val: 'P/B ' + fd.priceToBook + 'x' };
-      /* F3: Dividend Yield */
-      if (fd && fd.dividendYield != null) slots[2] = { pass: fd.dividendYield > 1.5, val: 'DIV ' + fd.dividendYield + '%' };
+      /* F3: Dividend Yield (score) + Payout Ratio (display only) */
+      if (fd && fd.dividendYield != null) {
+        var payoutStr2 = (fd.payoutRatio != null) ? ' · Payout ' + fd.payoutRatio + '%' : '';
+        slots[2] = { pass: fd.dividendYield > 1.5, val: 'DIV ' + fd.dividendYield + '%' + payoutStr2 };
+      }
       /* F4: ROA */
       if (fd && fd.roa != null) slots[3] = { pass: fd.roa > 1, val: 'ROA ' + fd.roa + '%' };
     } else {
@@ -2085,18 +2097,33 @@
     var scores = {};
     var FILTER_NAMES_TECH = ['📈 צמיחה','💰 תמחור','💎 איכות','🛡️ סיכון','🚀 מומנטום','📉 מגמה'];
     var FILTER_NAMES_FIN  = ['📈 ROE',  '💰 P/B',  '💎 דיבידנד','🛡️ ROA',   '🚀 מומנטום','📉 מגמה'];
-    function filterNames(sym) { return isFin(sym) ? FILTER_NAMES_FIN : FILTER_NAMES_TECH; }
+    var FILTER_NAMES_REIT = ['📈 FFO',  '💰 P/B',  '💎 דיבידנד','🛡️ ROA',   '🚀 מומנטום','📉 מגמה'];
+    function filterNames(sym) {
+      if (isREIT(sym)) return FILTER_NAMES_REIT;
+      if (isFin(sym))  return FILTER_NAMES_FIN;
+      return FILTER_NAMES_TECH;
+    }
 
     function explainFilter(sym, i, f) {
       if (!f) return 'אין נתונים זמינים';
-      var pass = f.pass, val = f.val, fin = isFin(sym);
-      if (fin) {
-        var fe = [
-          pass ? val + ' — החברה מרוויחה טוב על ההון, סימן לניהול יעיל'  : val + ' — תשואה נמוכה על ההון',
-          pass ? val + ' — מחיר הגיוני ביחס לשווי הנכסים בספרים'          : val + ' — יקר ביחס לשווי הנכסים',
-          pass ? val + ' דיבידנד שנתי — הכנסה יציבה לבעל המניה'           : val + ' — דיבידנד נמוך מ-1.5%',
-          pass ? val + ' — הבנק מרוויח טוב על כל שקל נכסים'               : val + ' — הבנק לא מנצל את נכסיו מספיק',
-        ];
+      var pass = f.pass, val = f.val;
+      if (isFin(sym)) {
+        var fe;
+        if (isREIT(sym)) {
+          fe = [
+            pass ? val + ' — ה-FFO של הנדל"ן גדל, הקרן מתרחבת' : val + ' — צמיחת FFO איטית, קשה להגדיל דיבידנד',
+            pass ? val + ' — מחיר הגיוני ביחס לשווי הנכסים'     : val + ' — יקר ביחס לשווי הנכסים',
+            pass ? val + ' — תשואת דיבידנד גבוהה, הכנסה יציבה'  : val + ' — תשואה נמוכה לנדל"ן',
+            pass ? val + ' — הנכסים מייצרים תשואה טובה'         : val + ' — תשואת נכסים נמוכה',
+          ];
+        } else {
+          fe = [
+            pass ? val + ' — החברה מרוויחה טוב על ההון, סימן לניהול יעיל' : val + ' — תשואה נמוכה על ההון',
+            pass ? val + ' — מחיר הגיוני ביחס לשווי הנכסים בספרים'        : val + ' — יקר ביחס לשווי הנכסים',
+            pass ? val + ' — תשואת דיבידנד גבוהה, הכנסה יציבה'            : val + ' — דיבידנד נמוך מ-1.5%',
+            pass ? val + ' — הבנק מרוויח טוב על כל שקל נכסים'             : val + ' — הבנק לא מנצל את נכסיו מספיק',
+          ];
+        }
         if (i < 4) return fe[i];
       } else {
         var te = [
@@ -2170,17 +2197,21 @@
       return wrap;
     }
 
-    /* ── Filter 1: Growth (tech) | ROE (financial) ── */
+    /* ── Filter 1: Growth (tech) | FFO Growth (REIT) | ROE (other financial) ── */
     var f1 = syms.map(function(s) {
       var fd = fundData[s];
       if (isFin(s)) {
+        if (isREIT(s)) {
+          if (!fd || fd.ffoGrowth == null) return null;  /* N/A — don't fall back to GM */
+          return { sym: s, pass: fd.ffoGrowth > 5, val: 'FFO +' + fd.ffoGrowth + '%', fin: true };
+        }
         if (!fd || fd.roe == null) return null;
         return { sym: s, pass: fd.roe > 12, val: 'ROE ' + fd.roe + '%', fin: true };
       }
       var r = revData[s]; if (!r) return null;
       return { sym: s, pass: r.pct > 8, val: (r.pct >= 0 ? '+' : '') + r.pct + '%', fin: false };
     }).filter(Boolean).sort(function(a,b){ return (b.pass-a.pass) || (b.pass ? parseFloat(b.val)-parseFloat(a.val) : parseFloat(a.val)-parseFloat(b.val)); });
-    panel.appendChild(makeFilter(1,'צמיחה | ROE','Revenue CAGR > 8% | ROE > 12%','מנוע הצמיחה (טק) | תשואה על ההון (פיננסי)','📈',f1));
+    panel.appendChild(makeFilter(1,'צמיחה | FFO | ROE','Revenue CAGR > 8% | FFO Growth > 5% | ROE > 12%','מנוע הצמיחה (טק) | FFO לנדל"ן | תשואה על ההון (פיננסי)','📈',f1));
 
     /* ── Filter 2: Valuation — PEG/FCF (tech) | P/B (financial) ── */
     var f2 = syms.map(function(s) {
@@ -2202,12 +2233,15 @@
     }).filter(Boolean).sort(function(a,b){ return b.pass-a.pass; });
     panel.appendChild(makeFilter(2,'תמחור','PEG < 2 | P/B < 2','תמחור ביחס לצמיחה (PEG) | תמחור ביחס להון עצמי (P/B)','💰',f2));
 
-    /* ── Filter 3: Quality — GM/ROE (tech) | Dividend (financial) ── */
+    /* ── Filter 3: Quality — GM/ROE (tech) | Dividend yield + payout ratio (financial) ── */
     var f3 = syms.map(function(s) {
       var fd = fundData[s];
       if (isFin(s)) {
         if (!fd || fd.dividendYield == null) return null;
-        return { sym: s, pass: fd.dividendYield > 1.5, val: 'DIV ' + fd.dividendYield + '%', fin: true };
+        /* score on yield only; display payout ratio alongside for context */
+        var yieldPass = fd.dividendYield > 1.5;
+        var payoutStr = (fd.payoutRatio != null) ? ' · Payout ' + fd.payoutRatio + '%' : '';
+        return { sym: s, pass: yieldPass, val: 'DIV ' + fd.dividendYield + '%' + payoutStr, fin: true };
       }
       var g = gmData[s];
       if (!g && (!fd || fd.roe == null)) return null;
