@@ -4908,138 +4908,306 @@
 /* =======================================================
    Feature Patch v20 — Dashboard Header Redesign styles
    ======================================================= */
-
-@keyframes pp-v20-open-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(52,211,153,.6); }
-  50%       { box-shadow: 0 0 0 5px rgba(52,211,153,0); }
-}
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap');
 
 #pp-v20-header {
+  --v20-bg:      #0e0f11;
+  --v20-surface: #16181c;
+  --v20-surf2:   #1e2026;
+  --v20-border:  rgba(255,255,255,0.07);
+  --v20-border2: rgba(255,255,255,0.13);
+  --v20-text:    #f0f1f3;
+  --v20-muted:   #7a7f8a;
+  --v20-dim:     #4a4f5a;
+  --v20-accent:  #3b82f6;
+  --v20-red:     #f87171;
+  --v20-green:   #34d399;
+  --v20-amber:   #fbbf24;
+
   position: sticky;
   top: 0;
   z-index: 200;
-  background: hsl(222,20%,7%);
-  border-bottom: 1px solid hsl(222,14%,13%);
+  background: var(--v20-bg);
+  border-bottom: 1px solid var(--v20-border);
   direction: rtl;
+  font-family: 'DM Sans', ui-sans-serif, system-ui, sans-serif;
   user-select: none;
 }
 
-#pp-v20-row1 {
+/* ── TOP BAR ─────────────────────────────────────────── */
+#pp-v20-top {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 7px 18px;
-  border-bottom: 1px solid hsl(222,14%,10%);
+  padding: 10px 24px;
+  border-bottom: 1px solid var(--v20-border);
+  background: var(--v20-surface);
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.pp-v20-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.pp-v20-brand-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--v20-accent);
+  box-shadow: 0 0 0 3px rgba(59,130,246,0.15);
+}
+.pp-v20-brand-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--v20-text);
+  letter-spacing: 0.3px;
+}
+.pp-v20-brand-name span {
+  color: var(--v20-muted);
+  font-weight: 400;
+}
+.pp-v20-top-right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
 }
 
-#pp-v20-pill-wrap {
+/* market pill */
+@keyframes pp-v20-pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.4; }
+}
+.pp-v20-market {
+  display: flex; align-items: center; gap: 6px;
+  background: var(--v20-surf2);
+  border: 1px solid var(--v20-border2);
+  border-radius: 20px;
+  padding: 4px 10px;
+  font-size: 11px;
+}
+#pp-v20-mkt-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--v20-amber);
+  animation: pp-v20-pulse 2s ease-in-out infinite;
+  transition: background .3s;
+}
+#pp-v20-mkt-label {
+  color: var(--v20-amber);
+  font-weight: 500;
+  letter-spacing: 0.2px;
+  transition: color .3s;
+}
+#pp-v20-mkt-time {
+  color: var(--v20-muted);
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-size: 10px;
+}
+
+/* FX rate */
+.pp-v20-fx {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-size: 11px;
+  color: var(--v20-muted);
+}
+.pp-v20-fx strong { color: var(--v20-text); font-weight: 500; }
+.pp-v20-fx-delayed {
+  font-size: 9px;
+  background: rgba(251,191,36,0.1);
+  color: var(--v20-amber);
+  border: 1px solid rgba(251,191,36,0.2);
+  border-radius: 4px;
+  padding: 1px 5px;
+  letter-spacing: 0.3px;
+}
+
+/* NYSE tag */
+.pp-v20-nyse {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--v20-dim);
+}
+.pp-v20-nyse .pp-v20-flag { font-size: 12px; }
+
+/* user chip */
+.pp-v20-user {
   display: flex;
   align-items: center;
   gap: 7px;
+  cursor: pointer;
 }
-
-#pp-v20-dot {
-  width: 8px;
-  height: 8px;
+.pp-v20-avatar {
+  width: 28px; height: 28px;
   border-radius: 50%;
-  flex-shrink: 0;
-  transition: background .4s;
+  background: linear-gradient(135deg, #3b82f6, #6366f1);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 600; color: white;
+  overflow: hidden;
 }
-#pp-v20-dot.open { animation: pp-v20-open-pulse 2s ease-in-out infinite; }
-
-#pp-v20-pill {
-  font-size: 12px;
-  font-weight: 700;
-  padding: 2px 10px;
-  border-radius: 12px;
-  transition: color .4s, background .4s, border-color .4s;
+.pp-v20-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.pp-v20-username {
+  font-size: 13px;
+  color: var(--v20-text);
+  font-weight: 400;
 }
 
-#pp-v20-nyse {
+/* ── PORTFOLIO BAR ───────────────────────────────────── */
+#pp-v20-portfolio {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 24px;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.pp-v20-pv-block {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.pp-v20-pv-label {
   font-size: 11px;
-  font-weight: 600;
-  color: #475569;
-  letter-spacing: .06em;
+  color: var(--v20-dim);
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  font-weight: 400;
+}
+#pp-v20-pv-value {
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-size: 26px;
+  font-weight: 500;
+  color: var(--v20-text);
+  letter-spacing: -0.5px;
+  line-height: 1.15;
+}
+.pp-v20-pv-change {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 2px;
+  flex-wrap: wrap;
+}
+#pp-v20-pv-amount {
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-size: 13px;
+  color: var(--v20-muted);
+  font-weight: 400;
+}
+#pp-v20-pv-pct {
+  font-size: 12px;
+  background: rgba(122,127,138,0.1);
+  color: var(--v20-muted);
+  border: 1px solid rgba(122,127,138,0.2);
+  border-radius: 5px;
+  padding: 2px 7px;
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+}
+.pp-v20-pv-change.up #pp-v20-pv-amount,
+.pp-v20-pv-change.up #pp-v20-pv-pct { color: var(--v20-green); }
+.pp-v20-pv-change.up #pp-v20-pv-pct {
+  background: rgba(52,211,153,0.1);
+  border-color: rgba(52,211,153,0.2);
+}
+.pp-v20-pv-change.down #pp-v20-pv-amount,
+.pp-v20-pv-change.down #pp-v20-pv-pct { color: var(--v20-red); }
+.pp-v20-pv-change.down #pp-v20-pv-pct {
+  background: rgba(248,113,113,0.1);
+  border-color: rgba(248,113,113,0.2);
+}
+.pp-v20-pv-period {
+  font-size: 11px;
+  color: var(--v20-dim);
 }
 
-#pp-v20-timer-wrap {
+/* refresh button */
+.pp-v20-refresh {
   display: flex;
   align-items: center;
   gap: 6px;
+  background: var(--v20-surf2);
+  border: 1px solid var(--v20-border2);
+  border-radius: 8px;
+  padding: 8px 14px;
+  color: var(--v20-muted);
+  font-size: 12px;
+  font-family: 'DM Sans', ui-sans-serif, system-ui, sans-serif;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.pp-v20-refresh:hover {
+  border-color: rgba(255,255,255,0.22);
+  color: var(--v20-text);
+}
+.pp-v20-refresh-icon {
+  width: 13px; height: 13px;
+  border: 1.5px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  display: inline-block;
+  transition: transform 0.3s ease;
+}
+.pp-v20-refresh:hover .pp-v20-refresh-icon { transform: rotate(180deg); }
+.pp-v20-refresh.spinning .pp-v20-refresh-icon {
+  animation: pp-v20-spin 0.8s linear infinite;
+}
+@keyframes pp-v20-spin {
+  to { transform: rotate(360deg); }
 }
 
-#pp-v20-prefix {
-  font-size: 11px;
-  color: #475569;
-  direction: rtl;
-}
-
-#pp-v20-timer {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 13px;
-  font-weight: 700;
-  color: #cbd5e1;
-  letter-spacing: .06em;
-}
-
-#pp-v20-row2 {
+/* ── NAV BAR ─────────────────────────────────────────── */
+#pp-v20-nav {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  padding: 10px 16px 8px;
-  gap: 3px;
-}
-
-#pp-v20-value {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 30px;
-  font-weight: 700;
-  color: #f1f5f9;
-  letter-spacing: -.02em;
-  line-height: 1.1;
-}
-
-#pp-v20-change {
-  font-size: 13px;
-  font-weight: 600;
-  color: #475569;
-  direction: ltr;
-  transition: color .3s;
-}
-
-#pp-v20-row3 {
-  display: flex;
-  border-top: 1px solid hsl(222,14%,10%);
+  gap: 2px;
+  padding: 0 24px;
+  border-top: 1px solid var(--v20-border);
   overflow-x: auto;
   scrollbar-width: none;
 }
-#pp-v20-row3::-webkit-scrollbar { display: none; }
+#pp-v20-nav::-webkit-scrollbar { display: none; }
 
 .pp-v20-tab {
-  flex: 1;
-  min-width: 56px;
-  padding: 9px 4px;
+  position: relative;
+  padding: 10px 14px;
   font-size: 13px;
-  font-weight: 600;
-  background: none;
-  border: none;
-  border-bottom: 2px solid transparent;
+  color: var(--v20-muted);
   cursor: pointer;
-  color: #64748b;
-  transition: color .15s, border-color .15s;
+  border: none;
+  background: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  transition: color 0.15s ease, border-color 0.15s ease;
+  display: flex;
+  align-items: center;
+  gap: 5px;
   white-space: nowrap;
+  font-family: inherit;
   direction: rtl;
 }
+.pp-v20-tab:hover { color: var(--v20-text); }
 .pp-v20-tab.active {
-  color: #a78bfa;
-  border-bottom-color: #a78bfa;
+  color: var(--v20-text);
+  border-bottom-color: var(--v20-accent);
+  font-weight: 500;
 }
-.pp-v20-tab.pp-tab-alerts.active {
-  color: #f87171;
-  border-bottom-color: #f87171;
+.pp-v20-tab-badge {
+  width: 5px; height: 5px;
+  border-radius: 50%;
+  background: var(--v20-accent);
+  display: inline-block;
 }
+.pp-v20-tab.alerts.active {
+  color: var(--v20-red);
+  border-bottom-color: var(--v20-red);
+}
+.pp-v20-tab.alerts.active .pp-v20-tab-badge { background: var(--v20-red); }
 
-/* hide original React header + nav bar (kept in DOM for delegation) */
+/* hide original React header + nav (kept in DOM for click delegation) */
 .pp-v20-hidden-react {
   height: 0 !important;
   overflow: hidden !important;
@@ -5050,34 +5218,38 @@
   visibility: hidden !important;
 }
 
-@media (max-width: 480px) {
-  #pp-v20-value { font-size: 22px; }
-  #pp-v20-row1  { padding: 6px 10px; }
-  #pp-v20-row2  { padding: 8px 10px 6px; }
-  .pp-v20-tab   { font-size: 12px; min-width: 48px; padding: 8px 3px; }
+@media (max-width: 640px) {
+  #pp-v20-top { padding: 8px 12px; gap: 8px; }
+  #pp-v20-portfolio { padding: 12px 12px 10px; }
+  #pp-v20-nav { padding: 0 12px; }
+  #pp-v20-pv-value { font-size: 22px; }
+  .pp-v20-tab { padding: 9px 10px; font-size: 12px; }
+  .pp-v20-username { display: none; }
+  .pp-v20-nyse { display: none; }
 }
 </style>
 
 <script>
 /* =======================================================
    Primo Portfolio Feature Patch v20
-   Dashboard Header Redesign — 3-row hierarchy layout
+   Dashboard Header Redesign — Premium 3-row layout
    ======================================================= */
 (function () {
   'use strict';
 
   var HDR_ID = 'pp-v20-header';
 
+  /* tabs must match React button text exactly */
   var TABS = [
-    { id: 'דשבורד',   label: 'דשבורד',      alertsTab: false },
-    { id: 'תובנות',   label: 'תובנות',       alertsTab: false },
-    { id: 'עסקאות',   label: 'עסקאות',       alertsTab: false },
-    { id: 'דוחות',    label: 'דוחות',        alertsTab: false },
-    { id: 'הפקדות',   label: 'הפקדות',       alertsTab: false },
-    { id: 'התראות',   label: '🔔 התראות',   alertsTab: true  },
+    { id: 'דשבורד',  label: 'דשבורד',  alertsTab: false, badge: false },
+    { id: 'תובנות',  label: 'תובנות',  alertsTab: false, badge: false },
+    { id: 'עסקאות',  label: 'עסקאות',  alertsTab: false, badge: false },
+    { id: 'דוחות',   label: 'דוחות',   alertsTab: false, badge: false },
+    { id: 'הפקדות',  label: 'הפקדות',  alertsTab: false, badge: false },
+    { id: 'התראות',  label: 'התראות',  alertsTab: true,  badge: true  },
   ];
 
-  /* ── Market state (mirrors v16 logic) ─────────────── */
+  /* ── Market state ──────────────────────────────────── */
   function pad(n) { return String(n).padStart(2, '0'); }
 
   function getET() {
@@ -5095,21 +5267,21 @@
     var et = getET();
     var tm = et.h * 60 + et.m;
     var isWeekday = ['Mon','Tue','Wed','Thu','Fri'].indexOf(et.weekday) !== -1;
-    var state, color, heState, prefix, tH, tM, extraDays = 0;
+    var state, color, heState, tH, tM, extraDays = 0;
 
     if (!isWeekday) {
-      state='CLOSED'; color='#f87171'; heState='סגור';      prefix='פתיחה בעוד'; tH=9; tM=30;
+      state='CLOSED'; color='#f87171'; heState='סגור';      tH=9; tM=30;
       extraDays = et.weekday === 'Sat' ? 2 : 1;
     } else if (tm < 240) {
-      state='CLOSED'; color='#f87171'; heState='סגור';      prefix='פתיחה בעוד'; tH=9; tM=30;
+      state='CLOSED'; color='#f87171'; heState='סגור';      tH=9; tM=30;
     } else if (tm < 570) {
-      state='PRE';    color='#fbbf24'; heState='פרה-מרקט';  prefix='פתיחה בעוד'; tH=9; tM=30;
+      state='PRE';    color='#fbbf24'; heState='פרה-מרקט';  tH=9; tM=30;
     } else if (tm < 960) {
-      state='OPEN';   color='#34d399'; heState='פתוח';      prefix='סגירה בעוד'; tH=16; tM=0;
+      state='OPEN';   color='#34d399'; heState='פתוח';      tH=16; tM=0;
     } else if (tm < 1200) {
-      state='POST';   color='#fbbf24'; heState='אחרי שעות'; prefix='סיום בעוד';  tH=20; tM=0;
+      state='POST';   color='#fbbf24'; heState='אחרי שעות'; tH=20; tM=0;
     } else {
-      state='CLOSED'; color='#f87171'; heState='סגור';      prefix='פתיחה בעוד'; tH=9; tM=30;
+      state='CLOSED'; color='#f87171'; heState='סגור';      tH=9; tM=30;
     }
 
     var secNow    = et.h * 3600 + et.m * 60 + et.s;
@@ -5118,15 +5290,12 @@
     if (diff < 0) diff += 86400;
 
     return {
-      state:    state,
-      color:    color,
-      heState:  heState,
-      prefix:   prefix,
+      state: state, color: color, heState: heState,
       countdown: pad(Math.floor(diff / 3600)) + ':' + pad(Math.floor((diff % 3600) / 60)) + ':' + pad(diff % 60)
     };
   }
 
-  /* ── Portfolio value ────────────────────────────────── */
+  /* ── Portfolio value ───────────────────────────────── */
   function computePortfolio() {
     try {
       var raw = localStorage.getItem('primo_portfolio_v6');
@@ -5152,7 +5321,6 @@
         var pc = prevClose[sym];
         if (pc) { daily += ns * (p - pc); hasPrev = true; }
       });
-
       var pct = (hasPrev && (total - daily) > 0) ? daily / (total - daily) * 100 : null;
       return { total: total > 0 ? total : null, daily: hasPrev ? daily : null, pct: pct };
     } catch(e) {
@@ -5164,139 +5332,215 @@
     return '$' + Math.abs(v).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
   }
 
-  /* ── Active tab detection ───────────────────────────── */
-  function getActiveReactLabel() {
-    /* alerts panel visible? */
-    var alertsOverlay = document.getElementById('pp-alerts-overlay');
-    if (alertsOverlay && alertsOverlay.classList.contains('pp-alerts-active')) return '🔔 התראות';
+  /* ── FX rate ───────────────────────────────────────── */
+  var _fxRate = null;
+  function fetchFx() {
+    fetch('/api/usdils')
+      .then(function(r) { return r.ok ? r.json() : null; })
+      .then(function(d) {
+        if (d && d.rate) { _fxRate = d.rate; syncFx(); }
+      })
+      .catch(function() {});
+  }
 
+  /* ── User info ─────────────────────────────────────── */
+  var _user = null;
+  function fetchUser() {
+    fetch('/api/me', { credentials: 'include' })
+      .then(function(r) { return r.ok ? r.json() : null; })
+      .then(function(u) { if (u) { _user = u; syncUser(); } })
+      .catch(function() {});
+  }
+
+  /* ── Active-tab detection + click delegation ──────── */
+  function getActiveReactLabel() {
+    var alertsOverlay = document.getElementById('pp-alerts-overlay');
+    if (alertsOverlay && alertsOverlay.classList.contains('pp-alerts-active')) return 'התראות';
     var found = null;
     document.querySelectorAll('button').forEach(function(b) {
-      if (b.id === 'pp-v20-header' || b.closest('#pp-v20-header')) return;
+      if (b.closest && b.closest('#pp-v20-header')) return;
       var lbl = b.textContent.trim();
-      if (lbl && b.className && b.className.indexOf('border-violet-500') !== -1) found = lbl;
+      if (lbl && b.className && b.className.indexOf('border-violet-500') !== -1) {
+        TABS.forEach(function(t) {
+          if (lbl === t.id || lbl.indexOf(t.id) !== -1) found = t.id;
+        });
+      }
     });
     return found;
   }
 
-  /* ── Delegate click to React/v19 nav ───────────────── */
   function clickTab(tab) {
     if (tab.alertsTab) {
-      /* try v19 button first */
       var alertsBtn = document.getElementById('pp-alerts-navbtn');
       if (alertsBtn) { alertsBtn.click(); return; }
     }
-    /* find matching React button outside our header */
     document.querySelectorAll('button').forEach(function(b) {
       if (b.closest && b.closest('#pp-v20-header')) return;
       if (b.textContent.trim() === tab.id) b.click();
     });
   }
 
-  /* ── Build DOM ──────────────────────────────────────── */
+  /* ── Delegate to React's refresh button ──────────── */
+  function triggerRefresh() {
+    var btn = null;
+    document.querySelectorAll('button').forEach(function(b) {
+      if (b.closest && b.closest('#pp-v20-header')) return;
+      var t = b.textContent.trim();
+      if (!btn && (t.indexOf('↻') !== -1 || t.indexOf('רענן') !== -1)) btn = b;
+    });
+    if (btn) btn.click();
+    /* also re-pull prices via server endpoints even if no React button found */
+    try {
+      var raw = localStorage.getItem('primo_portfolio_v6');
+      if (raw) {
+        var st = JSON.parse(raw);
+        var syms = Object.keys((function(){var m={};(st.transactions||[]).forEach(function(t){var s=(t.ticker||t.symbol||'').toUpperCase();if(s)m[s]=1;});return m;})());
+        if (syms.length) {
+          fetch('/api/live-prices?symbols=' + encodeURIComponent(syms.join(',')))
+            .then(function(r){ return r.json(); })
+            .then(function(){ /* pp17 applyPrices hook already listens */ })
+            .catch(function(){});
+        }
+      }
+    } catch(e) {}
+  }
+
+  /* ── Build header DOM ──────────────────────────────── */
   function buildHeader() {
     var hdr = document.createElement('div');
     hdr.id = HDR_ID;
 
-    /* Row 1 */
-    var row1 = document.createElement('div');
-    row1.id = 'pp-v20-row1';
+    /* TOP BAR */
+    var top = document.createElement('div');
+    top.id = 'pp-v20-top';
+    top.innerHTML =
+      '<div class="pp-v20-brand">' +
+        '<div class="pp-v20-brand-dot"></div>' +
+        '<div class="pp-v20-brand-name">פרימו <span>פורטפוליו</span></div>' +
+      '</div>' +
+      '<div class="pp-v20-top-right">' +
+        '<div class="pp-v20-fx" id="pp-v20-fx-wrap">' +
+          '<strong id="pp-v20-fx-num">—</strong>' +
+          '<span>$/₪</span>' +
+          '<span class="pp-v20-fx-delayed" id="pp-v20-fx-delayed">DELAYED</span>' +
+        '</div>' +
+        '<div class="pp-v20-market">' +
+          '<div id="pp-v20-mkt-dot"></div>' +
+          '<span id="pp-v20-mkt-label">—</span>' +
+          '<span id="pp-v20-mkt-time">—</span>' +
+        '</div>' +
+        '<div class="pp-v20-nyse">' +
+          '<span class="pp-v20-flag">🇺🇸</span>' +
+          '<span>NYSE</span>' +
+        '</div>' +
+        '<div class="pp-v20-user" id="pp-v20-user">' +
+          '<div class="pp-v20-avatar" id="pp-v20-avatar">?</div>' +
+          '<span class="pp-v20-username" id="pp-v20-username"></span>' +
+        '</div>' +
+      '</div>';
+    hdr.appendChild(top);
 
-    var pillWrap = document.createElement('div');
-    pillWrap.id = 'pp-v20-pill-wrap';
-    pillWrap.innerHTML =
-      '<span id="pp-v20-dot"></span>' +
-      '<span id="pp-v20-pill"></span>' +
-      '<span id="pp-v20-nyse">NYSE</span>';
+    /* PORTFOLIO BAR */
+    var pv = document.createElement('div');
+    pv.id = 'pp-v20-portfolio';
+    pv.innerHTML =
+      '<div class="pp-v20-pv-block">' +
+        '<div class="pp-v20-pv-label">שווי תיק</div>' +
+        '<div id="pp-v20-pv-value">—</div>' +
+        '<div class="pp-v20-pv-change" id="pp-v20-pv-change">' +
+          '<span id="pp-v20-pv-amount"></span>' +
+          '<span id="pp-v20-pv-pct"></span>' +
+          '<span class="pp-v20-pv-period">היום</span>' +
+        '</div>' +
+      '</div>' +
+      '<button class="pp-v20-refresh" id="pp-v20-refresh-btn" type="button">' +
+        '<span class="pp-v20-refresh-icon"></span>רענן' +
+      '</button>';
+    hdr.appendChild(pv);
 
-    var timerWrap = document.createElement('div');
-    timerWrap.id = 'pp-v20-timer-wrap';
-    timerWrap.innerHTML =
-      '<span id="pp-v20-prefix"></span>' +
-      '<span id="pp-v20-timer"></span>';
-
-    row1.appendChild(pillWrap);
-    row1.appendChild(timerWrap);
-    hdr.appendChild(row1);
-
-    /* Row 2 */
-    var row2 = document.createElement('div');
-    row2.id = 'pp-v20-row2';
-    row2.innerHTML =
-      '<div id="pp-v20-value">טוען...</div>' +
-      '<div id="pp-v20-change"></div>';
-    hdr.appendChild(row2);
-
-    /* Row 3 */
-    var row3 = document.createElement('div');
-    row3.id = 'pp-v20-row3';
-
+    /* NAV BAR */
+    var nav = document.createElement('div');
+    nav.id = 'pp-v20-nav';
     var btns = {};
     TABS.forEach(function(t) {
       var btn = document.createElement('button');
-      btn.className = 'pp-v20-tab' + (t.alertsTab ? ' pp-tab-alerts' : '');
-      btn.textContent = t.label;
+      btn.type = 'button';
+      btn.className = 'pp-v20-tab' + (t.alertsTab ? ' alerts' : '');
+      btn.innerHTML = t.label + (t.badge ? '<span class="pp-v20-tab-badge"></span>' : '');
       btn.addEventListener('click', function() {
         clickTab(t);
-        setTimeout(syncAll, 80);
+        setTimeout(syncTabs, 80);
       });
-      row3.appendChild(btn);
+      nav.appendChild(btn);
       btns[t.id] = btn;
     });
-    hdr.appendChild(row3);
-
+    hdr.appendChild(nav);
     hdr._btns = btns;
+
+    /* refresh click */
+    pv.querySelector('#pp-v20-refresh-btn').addEventListener('click', function() {
+      this.classList.add('spinning');
+      triggerRefresh();
+      var self = this;
+      setTimeout(function() { self.classList.remove('spinning'); }, 1200);
+    });
+
     return hdr;
   }
 
-  /* ── Sync market row ────────────────────────────────── */
+  /* ── Sync functions ────────────────────────────────── */
   function syncMarket() {
     var mkt = computeMarket();
-    var dot  = document.getElementById('pp-v20-dot');
-    var pill = document.getElementById('pp-v20-pill');
-    var pfx  = document.getElementById('pp-v20-prefix');
-    var tmr  = document.getElementById('pp-v20-timer');
-    if (!dot) return;
-
-    dot.style.background = mkt.color;
-    if (mkt.state === 'OPEN') {
-      dot.classList.add('open');
-    } else {
-      dot.classList.remove('open');
-      dot.style.boxShadow = 'none';
-    }
-
-    if (pill) {
-      pill.textContent = mkt.heState;
-      pill.style.cssText =
-        'font-size:12px;font-weight:700;padding:2px 10px;border-radius:12px;' +
-        'color:' + mkt.color + ';background:' + mkt.color + '22;border:1px solid ' + mkt.color + '44;';
-    }
-    if (pfx) pfx.textContent = mkt.prefix;
-    if (tmr) tmr.textContent = mkt.countdown;
+    var dot  = document.getElementById('pp-v20-mkt-dot');
+    var lbl  = document.getElementById('pp-v20-mkt-label');
+    var tm   = document.getElementById('pp-v20-mkt-time');
+    if (dot) dot.style.background = mkt.color;
+    if (lbl) { lbl.textContent = mkt.heState; lbl.style.color = mkt.color; }
+    if (tm)  tm.textContent = mkt.countdown;
   }
 
-  /* ── Sync portfolio value row ───────────────────────── */
   function syncValue() {
     var pf  = computePortfolio();
-    var vel = document.getElementById('pp-v20-value');
-    var cel = document.getElementById('pp-v20-change');
+    var vel = document.getElementById('pp-v20-pv-value');
+    var amt = document.getElementById('pp-v20-pv-amount');
+    var pct = document.getElementById('pp-v20-pv-pct');
+    var chg = document.getElementById('pp-v20-pv-change');
     if (!vel) return;
 
     vel.textContent = pf.total != null ? fmtMoney(pf.total) : '—';
 
-    if (cel) {
-      if (pf.daily != null && pf.pct != null) {
-        var sign = pf.daily >= 0 ? '+' : '-';
-        cel.textContent = sign + fmtMoney(pf.daily) + '  (' + (pf.daily >= 0 ? '+' : '') + pf.pct.toFixed(2) + '%)  היום';
-        cel.style.color = pf.daily >= 0 ? '#34d399' : '#f87171';
-      } else {
-        cel.textContent = '';
-      }
+    if (pf.daily != null && pf.pct != null) {
+      var up = pf.daily >= 0;
+      var arrow = up ? '▲' : '▼';
+      if (amt) amt.textContent = arrow + ' ' + fmtMoney(pf.daily);
+      if (pct) pct.textContent = (up ? '+' : '-') + Math.abs(pf.pct).toFixed(2) + '%';
+      if (chg) { chg.classList.toggle('up', up); chg.classList.toggle('down', !up); }
+    } else {
+      if (amt) amt.textContent = '';
+      if (pct) pct.textContent = '';
+      if (chg) { chg.classList.remove('up'); chg.classList.remove('down'); }
     }
   }
 
-  /* ── Sync nav tabs ──────────────────────────────────── */
+  function syncFx() {
+    var num = document.getElementById('pp-v20-fx-num');
+    if (num && _fxRate) num.textContent = _fxRate.toFixed(3);
+  }
+
+  function syncUser() {
+    var avatar = document.getElementById('pp-v20-avatar');
+    var name   = document.getElementById('pp-v20-username');
+    if (!avatar || !_user) return;
+    var dn = _user.name || _user.email || 'U';
+    var initial = dn.charAt(0).toUpperCase();
+    if (_user.picture) {
+      avatar.innerHTML = '<img src="' + _user.picture + '" alt="">';
+    } else {
+      avatar.textContent = initial;
+    }
+    if (name) name.textContent = dn.split(' ')[0] || dn;
+  }
+
   function syncTabs() {
     var hdr = document.getElementById(HDR_ID);
     if (!hdr || !hdr._btns) return;
@@ -5304,15 +5548,17 @@
     TABS.forEach(function(t) {
       var btn = hdr._btns[t.id];
       if (!btn) return;
-      var isActive = (t.label === activeLabel) || (!activeLabel && t.id === 'דשבורד');
+      var isActive = (t.id === activeLabel) || (!activeLabel && t.id === 'דשבורד');
       if (isActive) btn.classList.add('active');
-      else           btn.classList.remove('active');
+      else          btn.classList.remove('active');
     });
   }
 
   function syncAll() {
     syncMarket();
     syncValue();
+    syncFx();
+    syncUser();
     syncTabs();
   }
 
@@ -5321,36 +5567,26 @@
 
   function inject() {
     if (document.getElementById(HDR_ID)) { _injected = true; return true; }
-
-    /* React must have rendered nav tabs first */
     var dashBtn = null;
     document.querySelectorAll('button').forEach(function(b) {
       if (b.textContent.trim() === 'דשבורד' && !b.closest('#pp-v20-header')) dashBtn = b;
     });
     if (!dashBtn) return false;
 
-    /* Find and hide the React header + nav bar */
     var reactHeader = document.querySelector('header');
     var navBar = dashBtn.parentElement;
 
-    if (reactHeader) {
-      reactHeader.classList.add('pp-v20-hidden-react');
-      reactHeader.id = reactHeader.id || 'pp-v20-react-hdr';
-    }
-    if (navBar) {
-      navBar.classList.add('pp-v20-hidden-react');
-    }
+    if (reactHeader) reactHeader.classList.add('pp-v20-hidden-react');
+    if (navBar)      navBar.classList.add('pp-v20-hidden-react');
 
-    /* Build and inject our header */
     var hdr = buildHeader();
-    var insertBefore = reactHeader || navBar;
-    if (insertBefore && insertBefore.parentNode) {
-      insertBefore.parentNode.insertBefore(hdr, insertBefore);
-    } else {
-      document.body.prepend(hdr);
-    }
+    var anchor = reactHeader || navBar;
+    if (anchor && anchor.parentNode) anchor.parentNode.insertBefore(hdr, anchor);
+    else document.body.prepend(hdr);
 
     syncAll();
+    fetchFx();
+    fetchUser();
     _injected = true;
     return true;
   }
@@ -5366,17 +5602,15 @@
   });
   obs20.observe(document.body, { childList: true, subtree: true });
 
-  /* 1-second tick for market clock */
   setInterval(syncMarket, 1000);
+  setInterval(fetchFx, 5 * 60 * 1000);
 
-  /* sync value on localStorage changes (price updates) */
   window.addEventListener('storage', function(e) {
     if (e.key === 'primo_portfolio_v6' || e.key === 'primo_prevclose_v1') syncValue();
   });
 
   setTimeout(function() {
     if (!inject()) {
-      /* retry until React renders */
       var _retryTimer = setInterval(function() {
         if (inject()) clearInterval(_retryTimer);
       }, 500);
