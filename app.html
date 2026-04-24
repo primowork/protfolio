@@ -1638,6 +1638,17 @@
   var _screenerSym = '';
   var _screenerRes = null;
 
+  /* ── stock category classification ──────────────── */
+  var VALUE_FIN_SET = {
+    /* banks */       'JPM':1,'BAC':1,'WFC':1,'C':1,'GS':1,'MS':1,'USB':1,'PNC':1,'TFC':1,'FITB':1,'KEY':1,'RF':1,
+    /* asset mgmt */  'BN':1,'BAM':1,'BX':1,'KKR':1,'APO':1,'CG':1,'BLK':1,'SCHW':1,'IBKR':1,'STT':1,'BK':1,
+    /* insurance */   'MET':1,'PRU':1,'AIG':1,'CB':1,'ALL':1,'PGR':1,'AFL':1,'HIG':1,'TRV':1,
+    /* payments */    'V':1,'MA':1,'AXP':1,'DFS':1,'COF':1,
+    /* berkshire */   'BRK.B':1,'BRK.A':1
+  };
+  function isFin(sym) { return !!VALUE_FIN_SET[sym]; }
+  var FIN_BADGE = '<span style="font-size:10px;padding:0 4px;border-radius:3px;background:#1e3a5f;color:#60a5fa;border:1px solid #3b82f640;margin-right:3px;">🏦</span>';
+
   function isInsightsTab() {
     var active = false;
     document.querySelectorAll('button').forEach(function(b) {
@@ -1892,39 +1903,49 @@
     var gmD = data.gm || {}, fundD = data.fund || {}, insD = data.insider || {}, growD = data.growth || {};
     var p = peD[sym], r = revD[sym], g = gmD[sym], fd = fundD[sym];
     var m = ma200D[sym], ins = insD[sym], gt = growD[sym];
-    var SNAMES = ['📈 צמיחה','💰 תמחור','💎 איכות','🛡️ סיכון','🚀 מומנטום','📉 מגמה'];
+    var fin = isFin(sym);
+    var SNAMES = fin
+      ? ['📈 ROE','💰 P/B','💎 דיבידנד','🛡️ ROA','🚀 מומנטום','📉 מגמה']
+      : ['📈 צמיחה','💰 תמחור','💎 איכות','🛡️ סיכון','🚀 מומנטום','📉 מגמה'];
     var slots = [null, null, null, null, null, null];
 
-    /* F1: Revenue CAGR */
-    if (r) { var p1 = r.pct > 8; slots[0] = { pass: p1, val: (r.pct >= 0 ? '+' : '') + r.pct + '%' }; }
-
-    /* F2: Valuation PEG/PE */
-    if (p) {
-      var ep = saneFwd(p) || p.trailingPE;
-      if (ep) {
-        var peg2 = (r && r.pct > 3) ? +(ep / r.pct).toFixed(2) : null;
-        var fcf2 = fd ? fd.fcfYield : null;
-        var p2 = peg2 ? peg2 < 2 : ep < 30; if (fcf2 && fcf2 > 3) p2 = true;
-        slots[1] = { pass: p2, val: (peg2 ? 'PEG ' + peg2 : 'PE ' + fmtPE(ep)) + (fcf2 != null ? ' · FCF ' + fcf2 + '%' : '') };
+    if (fin) {
+      /* F1: ROE */
+      if (fd && fd.roe != null) slots[0] = { pass: fd.roe > 12, val: 'ROE ' + fd.roe + '%' };
+      /* F2: P/B */
+      if (fd && fd.priceToBook != null) slots[1] = { pass: fd.priceToBook < 2, val: 'P/B ' + fd.priceToBook + 'x' };
+      /* F3: Dividend Yield */
+      if (fd && fd.dividendYield != null) slots[2] = { pass: fd.dividendYield > 1.5, val: 'DIV ' + fd.dividendYield + '%' };
+      /* F4: ROA */
+      if (fd && fd.roa != null) slots[3] = { pass: fd.roa > 1, val: 'ROA ' + fd.roa + '%' };
+    } else {
+      /* F1: Revenue CAGR */
+      if (r) { var p1 = r.pct > 8; slots[0] = { pass: p1, val: (r.pct >= 0 ? '+' : '') + r.pct + '%' }; }
+      /* F2: Valuation PEG/PE */
+      if (p) {
+        var ep = saneFwd(p) || p.trailingPE;
+        if (ep) {
+          var peg2 = (r && r.pct > 3) ? +(ep / r.pct).toFixed(2) : null;
+          var fcf2 = fd ? fd.fcfYield : null;
+          var p2 = peg2 ? peg2 < 2 : ep < 30; if (fcf2 && fcf2 > 3) p2 = true;
+          slots[1] = { pass: p2, val: (peg2 ? 'PEG ' + peg2 : 'PE ' + fmtPE(ep)) + (fcf2 != null ? ' · FCF ' + fcf2 + '%' : '') };
+        }
       }
+      /* F3: Quality GM+ROE */
+      if (g || (fd && fd.roe != null)) {
+        var p3 = false, v3 = '';
+        if (g) { p3 = g.pct > 40; v3 = 'GM ' + g.pct + '%'; }
+        if (fd && fd.roe != null) { if (!g) { p3 = fd.roe > 12; v3 = 'ROE ' + fd.roe + '%'; } else { v3 += ' · ROE ' + fd.roe + '%'; if (fd.roe > 12) p3 = true; } }
+        slots[2] = { pass: p3, val: v3 };
+      }
+      /* F4: Debt/EBITDA */
+      if (fd && fd.debtEbitda != null) slots[3] = { pass: fd.debtEbitda < 4, val: 'D/E ' + fd.debtEbitda + 'x' };
     }
 
-    /* F3: Quality GM+ROE */
-    if (g || (fd && fd.roe != null)) {
-      var p3 = false, v3 = '';
-      if (g) { p3 = g.pct > 40; v3 = 'GM ' + g.pct + '%'; }
-      if (fd && fd.roe != null) { if (!g) { p3 = fd.roe > 12; v3 = 'ROE ' + fd.roe + '%'; } else { v3 += ' · ROE ' + fd.roe + '%'; if (fd.roe > 12) p3 = true; } }
-      slots[2] = { pass: p3, val: v3 };
-    }
-
-    /* F4: Debt/EBITDA */
-    if (fd && fd.debtEbitda != null) { slots[3] = { pass: fd.debtEbitda < 4, val: 'D/E ' + fd.debtEbitda + 'x' }; }
-
-    /* F5: MA200 momentum */
-    if (m) { slots[4] = { pass: !m.below || m.pct > -8, val: (m.below ? '' : '+') + m.pct + '% MA200' }; }
-
-    /* F6: Growth trend */
-    if (gt) { slots[5] = { pass: !gt.decelerating, val: 'TTM ' + (gt.ttmGrowth >= 0 ? '+' : '') + gt.ttmGrowth + '%' }; }
+    /* F5: MA200 momentum (all) */
+    if (m) slots[4] = { pass: !m.below || m.pct > -8, val: (m.below ? '' : '+') + m.pct + '% MA200' };
+    /* F6: Growth trend (all) */
+    if (gt) slots[5] = { pass: !gt.decelerating, val: 'TTM ' + (gt.ttmGrowth >= 0 ? '+' : '') + gt.ttmGrowth + '%' };
 
     var total = 6;
     var passes = slots.filter(function(f) { return f && f.pass === true; }).length;
@@ -1934,11 +1955,15 @@
       return;
     }
     var sc = passes >= total * 0.7 ? '#34d399' : passes >= total * 0.5 ? '#fbbf24' : '#f87171';
+    var catLabel = fin
+      ? '<span style="font-size:11px;padding:1px 6px;border-radius:3px;background:#1e3a5f;color:#60a5fa;border:1px solid #3b82f640;">🏦 ערך/פיננסי</span>'
+      : '<span style="font-size:11px;padding:1px 6px;border-radius:3px;background:#1e2a1a;color:#34d399;border:1px solid #34d39930;">🚀 טק/צמיחה</span>';
     var row = document.createElement('div');
     row.style.cssText = 'display:flex;align-items:center;gap:10px;margin-bottom:8px;flex-wrap:wrap;direction:rtl;';
     row.innerHTML =
       '<span style="font-size:24px;font-weight:800;color:' + sc + ';">' + passes + '/' + total + '</span>' +
       '<span style="font-size:17px;font-weight:700;color:#e2e8f0;">' + sym + '</span>' +
+      catLabel +
       '<span style="font-size:13px;color:' + sc + ';">' +
         (passes >= total * 0.7 ? '✅ עובר רוב הפילטרים' : passes >= total * 0.5 ? '⚠️ חלקי' : '❌ לא עובר') + '</span>';
     container.appendChild(row);
@@ -2044,7 +2069,9 @@
 
     /* per-stock pass counter */
     var scores = {};
-    var FILTER_NAMES = ['📈 צמיחה','💰 תמחור','💎 איכות','🛡️ סיכון','🚀 מומנטום','📉 מגמה'];
+    var FILTER_NAMES_TECH = ['📈 צמיחה','💰 תמחור','💎 איכות','🛡️ סיכון','🚀 מומנטום','📉 מגמה'];
+    var FILTER_NAMES_FIN  = ['📈 ROE',  '💰 P/B',  '💎 דיבידנד','🛡️ ROA',   '🚀 מומנטום','📉 מגמה'];
+    function filterNames(sym) { return isFin(sym) ? FILTER_NAMES_FIN : FILTER_NAMES_TECH; }
     syms.forEach(function(s) { scores[s] = { passes: 0, total: 0, filters: [null,null,null,null,null,null] }; });
 
     /* ── build one filter section ──────────────────── */
@@ -2078,6 +2105,7 @@
           var chip = document.createElement('span');
           chip.style.cssText = 'display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:5px;font-size:14px;font-weight:600;border:1px solid ' + c + '33;background:' + bg + ';';
           chip.innerHTML = '<span style="color:' + c + ';">' + (item.pass ? '✓' : '✗') + '</span>' +
+            (item.fin ? FIN_BADGE : '') +
             ' <a href="https://www.tradingview.com/chart/?symbol=' + item.sym + '" target="_blank" rel="noopener noreferrer"' +
             ' style="color:' + c + ';text-decoration:none;font-weight:700;">' + item.sym + '</a>' +
             '<span style="color:' + (item.pass ? '#86efac' : '#fca5a5') + ';font-size:12px;"> ' + item.val + '</span>';
@@ -2093,33 +2121,46 @@
       return wrap;
     }
 
-    /* ── Filter 1: Growth — Revenue ─────────────── */
+    /* ── Filter 1: Growth (tech) | ROE (financial) ── */
     var f1 = syms.map(function(s) {
+      var fd = fundData[s];
+      if (isFin(s)) {
+        if (!fd || fd.roe == null) return null;
+        return { sym: s, pass: fd.roe > 12, val: 'ROE ' + fd.roe + '%', fin: true };
+      }
       var r = revData[s]; if (!r) return null;
-      return { sym: s, pass: r.pct > 8, val: (r.pct >= 0 ? '+' : '') + r.pct + '%' };
+      return { sym: s, pass: r.pct > 8, val: (r.pct >= 0 ? '+' : '') + r.pct + '%', fin: false };
     }).filter(Boolean).sort(function(a,b){ return (b.pass-a.pass) || (b.pass ? parseFloat(b.val)-parseFloat(a.val) : parseFloat(a.val)-parseFloat(b.val)); });
-    panel.appendChild(makeFilter(1,'צמיחה','Revenue CAGR > 8%','מנוע הצמיחה — האם החברה גדלה לאורך זמן?','📈',f1));
+    panel.appendChild(makeFilter(1,'צמיחה | ROE','Revenue CAGR > 8% | ROE > 12%','מנוע הצמיחה (טק) | תשואה על ההון (פיננסי)','📈',f1));
 
-    /* ── Filter 2: Valuation — PEG + FCF ─────────── */
+    /* ── Filter 2: Valuation — PEG/FCF (tech) | P/B (financial) ── */
     var f2 = syms.map(function(s) {
+      var fd = fundData[s];
+      if (isFin(s)) {
+        if (!fd || fd.priceToBook == null) return null;
+        return { sym: s, pass: fd.priceToBook < 2, val: 'P/B ' + fd.priceToBook + 'x', fin: true };
+      }
       var p = peData[s]; if (!p) return null;
       var ep = saneFwd(p) || p.trailingPE; if (!ep) return null;
       var r = revData[s];
       var peg = (r && r.pct > 3) ? +(ep / r.pct).toFixed(2) : null;
-      var fd = fundData[s];
       var fcf = fd ? fd.fcfYield : null;
       var pass = peg ? peg < 2 : ep < 30;
       if (fcf && fcf > 3) pass = true;
       var val = peg ? 'PEG ' + peg : 'PE ' + fmtPE(ep);
       if (fcf != null) val += ' · FCF ' + fcf + '%';
-      return { sym: s, pass: pass, val: val };
+      return { sym: s, pass: pass, val: val, fin: false };
     }).filter(Boolean).sort(function(a,b){ return b.pass-a.pass; });
-    panel.appendChild(makeFilter(2,'תמחור','PEG < 2 | FCF Yield > 3%','האם המחיר הגיוני ביחס לצמיחה? (PEG = P/E ÷ Revenue growth)','💰',f2));
+    panel.appendChild(makeFilter(2,'תמחור','PEG < 2 | P/B < 2','תמחור ביחס לצמיחה (PEG) | תמחור ביחס להון עצמי (P/B)','💰',f2));
 
-    /* ── Filter 3: Quality — Gross Margin + ROE ──── */
+    /* ── Filter 3: Quality — GM/ROE (tech) | Dividend (financial) ── */
     var f3 = syms.map(function(s) {
-      var g = gmData[s];
       var fd = fundData[s];
+      if (isFin(s)) {
+        if (!fd || fd.dividendYield == null) return null;
+        return { sym: s, pass: fd.dividendYield > 1.5, val: 'DIV ' + fd.dividendYield + '%', fin: true };
+      }
+      var g = gmData[s];
       if (!g && (!fd || fd.roe == null)) return null;
       var val = '', pass = false;
       if (g) { pass = g.pct > 40; val = 'GM ' + g.pct + '%'; }
@@ -2127,22 +2168,26 @@
         if (!g) { pass = fd.roe > 12; val = 'ROE ' + fd.roe + '%'; }
         else { val += ' · ROE ' + fd.roe + '%'; if (fd.roe > 12) pass = true; }
       }
-      return { sym: s, pass: pass, val: val };
+      return { sym: s, pass: pass, val: val, fin: false };
     }).filter(Boolean).sort(function(a,b){ return b.pass-a.pass; });
-    panel.appendChild(makeFilter(3,'איכות','Gross Margin > 40% | ROE > 12%','כסף אמיתי — האם החברה מרוויחה ביעילות ובאיכות?','💎',f3));
+    panel.appendChild(makeFilter(3,'איכות | דיבידנד','GM > 40% | ROE > 12% | Div > 1.5%','כסף אמיתי (טק: שולי רווח) | הכנסה יציבה (פיננסי: דיבידנד)','💎',f3));
 
-    /* ── Filter 4: Risk — Debt/EBITDA ────────────── */
+    /* ── Filter 4: Risk — Debt/EBITDA (tech) | ROA (financial) ── */
     var f4 = syms.map(function(s) {
       var fd = fundData[s];
+      if (isFin(s)) {
+        if (!fd || fd.roa == null) return null;
+        return { sym: s, pass: fd.roa > 1, val: 'ROA ' + fd.roa + '%', fin: true };
+      }
       if (!fd || fd.debtEbitda == null) return null;
-      return { sym: s, pass: fd.debtEbitda < 4, val: 'D/EBITDA ' + fd.debtEbitda + 'x' };
+      return { sym: s, pass: fd.debtEbitda < 4, val: 'D/EBITDA ' + fd.debtEbitda + 'x', fin: false };
     }).filter(Boolean).sort(function(a,b){ return b.pass-a.pass; });
-    panel.appendChild(makeFilter(4,'סיכון','Debt/EBITDA < 4','כמה חוב יש לחברה? מינוף גבוה = סיכון גבוה','🛡️',f4));
+    panel.appendChild(makeFilter(4,'סיכון','Debt/EBITDA < 4 | ROA > 1%','מינוף (טק) | תשואת נכסים — יעילות בנקאית (פיננסי)','🛡️',f4));
 
-    /* ── Filter 5: Momentum — MA200 ──────────────── */
+    /* ── Filter 5: Momentum — MA200 (all categories) ── */
     var f5 = syms.map(function(s) {
       var m = ma200Data[s]; if (!m) return null;
-      return { sym: s, pass: !m.below || m.pct > -8, val: (m.below ? '' : '+') + m.pct + '% vs MA200' };
+      return { sym: s, pass: !m.below || m.pct > -8, val: (m.below ? '' : '+') + m.pct + '% vs MA200', fin: isFin(s) };
     }).filter(Boolean).sort(function(a,b){ return b.pass-a.pass; });
     panel.appendChild(makeFilter(5,'מומנטום','Not below MA200 by > 8%','כיוון השוק — האם המניה נסחרת מעל ממוצע 200 יומי?','🚀',f5));
 
@@ -2166,12 +2211,12 @@
       panel.appendChild(insBox);
     }
 
-    /* ── Filter 6→7 renumbered: Growth Trend ─────── */
+    /* ── Filter 6: Growth Trend (all categories) ─── */
     var f7 = syms.map(function(s) {
       var d = growthData[s]; if (!d) return null;
       var pass = !d.decelerating;
       var val = 'TTM ' + (d.ttmGrowth >= 0 ? '+' : '') + d.ttmGrowth + '% | CAGR ' + (d.cagr >= 0 ? '+' : '') + d.cagr + '%';
-      return { sym: s, pass: pass, val: val };
+      return { sym: s, pass: pass, val: val, fin: isFin(s) };
     }).filter(Boolean).sort(function(a,b){ return b.pass-a.pass; });
     if (f7.length) panel.appendChild(makeFilter(6,'מגמת צמיחה','TTM Revenue ≥ 70% of 3yr CAGR','האצה/האטה — האם הצמיחה (4 רבעונים אחרונים vs שנה קודמת) האיצה או האטה?','📉',f7));
 
@@ -2364,9 +2409,13 @@
 
         var row = document.createElement('div');
         row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:5px 0;cursor:pointer;direction:rtl;';
+        var catPill = isFin(s)
+          ? '<span style="font-size:10px;padding:1px 5px;border-radius:3px;background:#1e3a5f;color:#60a5fa;border:1px solid #3b82f640;">🏦 ערך</span>'
+          : '<span style="font-size:10px;padding:1px 5px;border-radius:3px;background:#1e2a1a;color:#34d399;border:1px solid #34d39930;">🚀 טק</span>';
         row.innerHTML =
           '<a href="https://www.tradingview.com/chart/?symbol=' + s + '" target="_blank" rel="noopener noreferrer"' +
           ' style="font-weight:700;font-size:15px;color:#e2e8f0;text-decoration:none;min-width:55px;" onclick="event.stopPropagation()">' + s + '</a>' +
+          catPill +
           '<div style="flex:1;background:hsl(222,14%,18%);border-radius:3px;height:7px;overflow:hidden;">' +
           '<div style="width:' + pct + '%;height:100%;background:' + c + ';border-radius:3px;"></div></div>' +
           '<span style="font-size:14px;font-weight:700;color:' + c + ';min-width:36px;text-align:left;">' + (noData ? '—' : sc.passes + '/' + sc.total) + '</span>' +
@@ -2383,7 +2432,7 @@
           chip.style.cssText = 'padding:2px 8px;border-radius:5px;font-size:12px;font-weight:700;' +
             'color:' + fc + ';background:' + fc + '18;border:1px solid ' + fc + '33;';
           chip.title = f ? f.val : 'אין נתון';
-          chip.textContent = (!f ? '— ' : f.pass ? '✓ ' : '✗ ') + FILTER_NAMES[i];
+          chip.textContent = (!f ? '— ' : f.pass ? '✓ ' : '✗ ') + filterNames(s)[i];
           detail.appendChild(chip);
         });
         rowWrap.appendChild(detail);
