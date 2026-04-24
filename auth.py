@@ -85,6 +85,12 @@ async def _upsert_user(provider, provider_id, email, name=None, picture=None):
 router = APIRouter()
 
 
+@router.get("/api/auth-config")
+async def auth_config():
+    """Returns which OAuth providers are configured. Used by frontend to decide whether to show login."""
+    return {"google": bool(GOOGLE_CLIENT_ID), "apple": bool(APPLE_CLIENT_ID)}
+
+
 @router.get("/auth/google")
 async def google_login(request: Request):
     if not GOOGLE_CLIENT_ID:
