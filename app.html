@@ -1666,7 +1666,9 @@
     'VTR':1,'PEAK':1,'DOC':1,'WPC':1,'NNN':1,'VICI':1,'IRM':1,'SBAC':1,'CCI':1,'MPW':1
   };
   function isREIT(sym) { return !!REIT_SET[sym]; }
-  var FIN_BADGE = '<span style="font-size:10px;padding:0 4px;border-radius:3px;background:#1e3a5f;color:#60a5fa;border:1px solid #3b82f640;margin-right:3px;">🏦</span>';
+  var FIN_BADGE  = '<span style="font-size:10px;padding:0 4px;border-radius:3px;background:#1e3a5f;color:#60a5fa;border:1px solid #3b82f640;margin-right:3px;">🏦</span>';
+  var REIT_BADGE = '<span style="font-size:10px;padding:0 4px;border-radius:3px;background:#1a2e1a;color:#86efac;border:1px solid #22c55e40;margin-right:3px;">🏢</span>';
+  function catBadge(sym) { return isREIT(sym) ? REIT_BADGE : (isFin(sym) ? FIN_BADGE : ''); }
 
   function isInsightsTab() {
     var active = false;
@@ -1981,9 +1983,11 @@
       return;
     }
     var sc = passes >= total * 0.7 ? '#34d399' : passes >= total * 0.5 ? '#fbbf24' : '#f87171';
-    var catLabel = fin
-      ? '<span style="font-size:11px;padding:1px 6px;border-radius:3px;background:#1e3a5f;color:#60a5fa;border:1px solid #3b82f640;">🏦 ערך/פיננסי</span>'
-      : '<span style="font-size:11px;padding:1px 6px;border-radius:3px;background:#1e2a1a;color:#34d399;border:1px solid #34d39930;">🚀 טק/צמיחה</span>';
+    var catLabel = isREIT(sym)
+      ? '<span style="font-size:11px;padding:1px 6px;border-radius:3px;background:#1a2e1a;color:#86efac;border:1px solid #22c55e40;">🏢 REIT</span>'
+      : (fin
+        ? '<span style="font-size:11px;padding:1px 6px;border-radius:3px;background:#1e3a5f;color:#60a5fa;border:1px solid #3b82f640;">🏦 פיננסי</span>'
+        : '<span style="font-size:11px;padding:1px 6px;border-radius:3px;background:#1e2a1a;color:#34d399;border:1px solid #34d39930;">🚀 טק/צמיחה</span>');
     var row = document.createElement('div');
     row.style.cssText = 'display:flex;align-items:center;gap:10px;margin-bottom:8px;flex-wrap:wrap;direction:rtl;';
     row.innerHTML =
@@ -2181,7 +2185,7 @@
           var chip = document.createElement('span');
           chip.style.cssText = 'display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:5px;font-size:14px;font-weight:600;border:1px solid ' + c + '33;background:' + bg + ';';
           chip.innerHTML = '<span style="color:' + c + ';">' + (item.pass ? '✓' : '✗') + '</span>' +
-            (item.fin ? FIN_BADGE : '') +
+            catBadge(item.sym) +
             ' <a href="https://www.tradingview.com/chart/?symbol=' + item.sym + '" target="_blank" rel="noopener noreferrer"' +
             ' style="color:' + c + ';text-decoration:none;font-weight:700;">' + item.sym + '</a>' +
             '<span style="color:' + (item.pass ? '#86efac' : '#fca5a5') + ';font-size:12px;"> ' + item.val + '</span>';
@@ -2492,9 +2496,11 @@
 
         var row = document.createElement('div');
         row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:5px 0;cursor:pointer;direction:rtl;';
-        var catPill = isFin(s)
-          ? '<span style="font-size:10px;padding:1px 5px;border-radius:3px;background:#1e3a5f;color:#60a5fa;border:1px solid #3b82f640;">🏦 ערך</span>'
-          : '<span style="font-size:10px;padding:1px 5px;border-radius:3px;background:#1e2a1a;color:#34d399;border:1px solid #34d39930;">🚀 טק</span>';
+        var catPill = isREIT(s)
+          ? '<span style="font-size:10px;padding:1px 5px;border-radius:3px;background:#1a2e1a;color:#86efac;border:1px solid #22c55e40;">🏢 REIT</span>'
+          : (isFin(s)
+            ? '<span style="font-size:10px;padding:1px 5px;border-radius:3px;background:#1e3a5f;color:#60a5fa;border:1px solid #3b82f640;">🏦 פיננסי</span>'
+            : '<span style="font-size:10px;padding:1px 5px;border-radius:3px;background:#1e2a1a;color:#34d399;border:1px solid #34d39930;">🚀 טק</span>');
         row.innerHTML =
           '<a href="https://www.tradingview.com/chart/?symbol=' + s + '" target="_blank" rel="noopener noreferrer"' +
           ' style="font-weight:700;font-size:15px;color:#e2e8f0;text-decoration:none;min-width:55px;" onclick="event.stopPropagation()">' + s + '</a>' +
