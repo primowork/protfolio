@@ -3341,9 +3341,27 @@
   }
   #pp-premarket-bar .pp-pm-chip .pp-pm-sym  { font-weight: 700; color: #e2e8f0; }
   #pp-premarket-bar .pp-pm-chip .pp-pm-px   { color: #cbd5e1; margin-right: 3px; }
-  #pp-premarket-bar .pp-pm-chip .pp-pm-pos  { color: #34d399; }
-  #pp-premarket-bar .pp-pm-chip .pp-pm-neg  { color: #f87171; }
-  #pp-premarket-bar .pp-pm-chip .pp-pm-icon { font-size: 10px; opacity: .8; }
+  #pp-premarket-bar .pp-pm-chip .pp-pm-pos  { color: #34d399; font-weight: 700; }
+  #pp-premarket-bar .pp-pm-chip .pp-pm-neg  { color: #f87171; font-weight: 700; }
+  #pp-premarket-bar .pp-pm-chip .pp-pm-icon { font-size: 11px; opacity: .9; }
+
+  /* ≥2% gainers — prominent green */
+  #pp-premarket-bar .pp-pm-chip.pp-pm-big-up {
+    background: linear-gradient(90deg, hsl(150,50%,12%), hsl(150,45%,8%));
+    border-color: #34d399;
+    box-shadow: 0 0 0 1px #34d39933, 0 2px 6px #34d39922;
+  }
+  #pp-premarket-bar .pp-pm-chip.pp-pm-big-up .pp-pm-sym { color: #86efac; }
+  #pp-premarket-bar .pp-pm-chip.pp-pm-big-up .pp-pm-pos { color: #4ade80; font-weight: 800; }
+
+  /* ≤-2% losers — prominent red */
+  #pp-premarket-bar .pp-pm-chip.pp-pm-big-down {
+    background: linear-gradient(90deg, hsl(0,50%,14%), hsl(0,45%,9%));
+    border-color: #f87171;
+    box-shadow: 0 0 0 1px #f8717133, 0 2px 6px #f8717122;
+  }
+  #pp-premarket-bar .pp-pm-chip.pp-pm-big-down .pp-pm-sym { color: #fca5a5; }
+  #pp-premarket-bar .pp-pm-chip.pp-pm-big-down .pp-pm-neg { color: #fb7185; font-weight: 800; }
 
   /* pre-market sub-line inside the current-price cell */
   .pp-pm-badge {
@@ -3408,26 +3426,38 @@
     var session = 'REGULAR';
     syms.forEach(function(s) { if (data[s].session) session = data[s].session; });
 
+    // Only include significant movers (≥2% up or ≤-2% down), sorted by magnitude
+    var MOVER_THRESHOLD = 2;
+    var movers = syms
+      .map(function(sym) {
+        var d = data[sym];
+        if (!d || !d.price || d.session === 'REGULAR') return null;
+        if (d.changePct == null || Math.abs(d.changePct) < MOVER_THRESHOLD) return null;
+        return { sym: sym, d: d };
+      })
+      .filter(Boolean)
+      .sort(function(a, b) { return Math.abs(b.d.changePct) - Math.abs(a.d.changePct); });
+
+    if (!movers.length) return;  // nothing significant — don't show the bar at all
+
     var bar = document.createElement('div');
     bar.id = 'pp-premarket-bar';
 
     var lbl = document.createElement('span');
     lbl.className = 'pp-pm-label';
-    lbl.textContent = SESSION_LABEL[session] || SESSION_LABEL.CLOSED;
+    lbl.textContent = (SESSION_LABEL[session] || SESSION_LABEL.CLOSED) + ' · תנודות ≥2%';
     bar.appendChild(lbl);
 
-    // Only show price chips when there's actual extended-hours data
-    syms.forEach(function(sym) {
-      var d = data[sym];
-      if (!d.price || d.session === 'REGULAR') return;
-      var pct = d.changePct;
+    movers.forEach(function(m) {
+      var sym = m.sym, d = m.d, pct = d.changePct;
+      var isUp = pct >= 0;
 
       var chip = document.createElement('span');
-      chip.className = 'pp-pm-chip';
+      chip.className = 'pp-pm-chip ' + (isUp ? 'pp-pm-big-up' : 'pp-pm-big-down');
 
       var icon = document.createElement('span');
       icon.className = 'pp-pm-icon';
-      icon.textContent = '🌙';
+      icon.textContent = isUp ? '🚀' : '📉';
 
       var symEl = document.createElement('span');
       symEl.className = 'pp-pm-sym';
@@ -3437,16 +3467,14 @@
       px.className = 'pp-pm-px';
       px.textContent = '$' + d.price.toFixed(2);
 
+      var pctEl = document.createElement('span');
+      pctEl.className = isUp ? 'pp-pm-pos' : 'pp-pm-neg';
+      pctEl.textContent = (isUp ? '+' : '') + pct.toFixed(2) + '%';
+
       chip.appendChild(icon);
       chip.appendChild(symEl);
       chip.appendChild(px);
-
-      if (pct != null) {
-        var pctEl = document.createElement('span');
-        pctEl.className = pct >= 0 ? 'pp-pm-pos' : 'pp-pm-neg';
-        pctEl.textContent = (pct >= 0 ? '+' : '') + pct.toFixed(2) + '%';
-        chip.appendChild(pctEl);
-      }
+      chip.appendChild(pctEl);
       bar.appendChild(chip);
     });
 
