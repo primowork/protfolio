@@ -2835,6 +2835,11 @@
     max-height: none !important;
     overflow-y: visible !important;
   }
+
+  /* prevent tab-switch scroll jumps: keep the content area tall enough */
+  main, [role="main"], #root > div > div {
+    min-height: 80vh;
+  }
 </style>
 
 <script>
@@ -4990,9 +4995,6 @@
   --v20-green:   #34d399;
   --v20-amber:   #fbbf24;
 
-  position: sticky;
-  top: 0;
-  z-index: 200;
   background: var(--v20-bg);
   border-bottom: 1px solid var(--v20-border);
   direction: rtl;
@@ -5248,8 +5250,13 @@ body:not(:has(#pp-v21-chart-card)) #pp-v20-portfolio {
   gap: 8px;
   padding: 10px 24px;
   border-top: 1px solid var(--v20-border);
+  border-bottom: 1px solid var(--v20-border);
   overflow-x: auto;
   scrollbar-width: none;
+  position: sticky;
+  top: 0;
+  z-index: 200;
+  background: var(--v20-bg, #0e0f11);
 }
 #pp-v20-nav::-webkit-scrollbar { display: none; }
 
@@ -5460,13 +5467,20 @@ body:not(:has(#pp-v21-chart-card)) #pp-v20-portfolio {
   }
 
   function clickTab(tab) {
+    /* preserve scroll so the sticky nav stays in place after React re-renders */
+    var savedY = window.scrollY;
     if (tab.alertsTab) {
       var alertsBtn = document.getElementById('pp-alerts-navbtn');
-      if (alertsBtn) { alertsBtn.click(); return; }
+      if (alertsBtn) { alertsBtn.click(); }
+    } else {
+      document.querySelectorAll('button').forEach(function(b) {
+        if (b.closest && b.closest('#pp-v20-wrapper')) return;
+        if (b.textContent.trim() === tab.id) b.click();
+      });
     }
-    document.querySelectorAll('button').forEach(function(b) {
-      if (b.closest && b.closest('#pp-v20-header')) return;
-      if (b.textContent.trim() === tab.id) b.click();
+    /* restore after React has settled */
+    requestAnimationFrame(function() {
+      window.scrollTo({ top: savedY, behavior: 'instant' });
     });
   }
 
@@ -5497,6 +5511,10 @@ body:not(:has(#pp-v21-chart-card)) #pp-v20-portfolio {
 
   /* ── Build header DOM ──────────────────────────────── */
   function buildHeader() {
+    /* wrapper holds the scrolling header + the sticky nav as siblings */
+    var wrapper = document.createElement('div');
+    wrapper.id = 'pp-v20-wrapper';
+
     var hdr = document.createElement('div');
     hdr.id = HDR_ID;
 
@@ -5585,7 +5603,7 @@ body:not(:has(#pp-v21-chart-card)) #pp-v20-portfolio {
       nav.appendChild(btn);
       btns[t.id] = btn;
     });
-    hdr.appendChild(nav);
+    /* nav is a SIBLING of hdr inside wrapper, so it can be sticky independently */
     hdr._btns = btns;
 
     /* refresh click */
@@ -5596,7 +5614,9 @@ body:not(:has(#pp-v21-chart-card)) #pp-v20-portfolio {
       setTimeout(function() { self.classList.remove('spinning'); }, 1200);
     });
 
-    return hdr;
+    wrapper.appendChild(hdr);
+    wrapper.appendChild(nav);
+    return wrapper;
   }
 
   /* ── Sync functions ────────────────────────────────── */
@@ -5690,10 +5710,10 @@ body:not(:has(#pp-v21-chart-card)) #pp-v20-portfolio {
     if (reactHeader) reactHeader.classList.add('pp-v20-hidden-react');
     if (navBar)      navBar.classList.add('pp-v20-hidden-react');
 
-    var hdr = buildHeader();
+    var wrapper = buildHeader();
     var anchor = reactHeader || navBar;
-    if (anchor && anchor.parentNode) anchor.parentNode.insertBefore(hdr, anchor);
-    else document.body.prepend(hdr);
+    if (anchor && anchor.parentNode) anchor.parentNode.insertBefore(wrapper, anchor);
+    else document.body.prepend(wrapper);
 
     syncAll();
     fetchFx();
@@ -5742,7 +5762,7 @@ body:not(:has(#pp-v21-chart-card)) #pp-v20-portfolio {
   border: none;
   border-top: 1px solid rgba(255,255,255,0.07);
   border-radius: 0;
-  padding: 14px 24px 12px;
+  padding: 10px 24px 8px;
   direction: rtl;
   font-family: 'DM Sans', ui-sans-serif, system-ui, sans-serif;
   display: grid;
@@ -5890,8 +5910,8 @@ body:not(:has(#pp-v21-chart-card)) #pp-v20-portfolio {
 
 #pp-v21-chart-wrap {
   position: relative;
-  height: 320px;
-  margin: 18px 0 10px;
+  height: 180px;
+  margin: 12px 0 8px;
   overflow: hidden;
 }
 #pp-v21-chart-svg {
