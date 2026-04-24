@@ -4512,4 +4512,69 @@
 
 })();
 </script>
+
+<script>
+/* =======================================================
+   Patch v21 — Weekly quote rotation
+   Replaces the React month-based quote with a week-based one.
+   New quote every Sunday; 12 quotes cycle independently of month.
+   ======================================================= */
+(function () {
+  'use strict';
+
+  var QUOTES = [
+    {q: "השקעה מוצלחת אינה עניין של קנייה נמוכה ומכירה גבוהה, אלא קנייה נמוכה והחזקה לטווח ארוך.", a: "פיטר לינץ'"},
+    {q: "הזמן הטוב ביותר לנטוע עץ היה לפני עשרים שנה. הזמן הטוב ביותר הבא הוא עכשיו.", a: "פתגם סיני"},
+    {q: "אל תחסוך את מה שנותר לאחר ההוצאות — הוצא את מה שנותר לאחר החיסכון.", a: "וורן באפט"},
+    {q: "השוק מלא בנאיביים שאינם יודעים ובציניים שאינם יודעים שאינם יודעים.", a: "מלקולם פורבס"},
+    {q: "ירידות בשוק הן חלק בלתי נפרד מהמסע. מי שסובל אותן — יהנה מהפירות.", a: "ג'ון בוגל"},
+    {q: "אם אינך מוכן להחזיק מניה עשר שנים, אל תחשוב אפילו להחזיק אותה עשר דקות.", a: "וורן באפט"},
+    {q: "הסבלנות היא אמנות ההשקעה. מי שממתין — לרוב ינצח.", a: "צ'רלי מאנגר"},
+    {q: "הסיכון הגדול ביותר הוא לא לקחת שום סיכון. בעולם המשתנה, האסטרטגיה הכישלונית היחידה היא אי-קיחת סיכון.", a: "מארק צוקרברג"},
+    {q: "אל תמדוד את העושר שלך בכמות הכסף שיש לך, אלא בחופש שהוא מאפשר לך.", a: "בנג'מין פרנקלין"},
+    {q: "ריבית דריבית היא הפלא השמיני של העולם. מי שמבין אותה — מרוויח ממנה. מי שלא — משלם אותה.", a: "אלברט איינשטיין (מיוחס)"},
+    {q: "שוק מניות הוא מכשיר להעברת כסף מחסרי סבלנות לאנשים בעלי סבלנות.", a: "וורן באפט"},
+    {q: "ההשקעה הטובה ביותר שאתה יכול לעשות היא בעצמך.", a: "וורן באפט"}
+  ];
+
+  /* week number since epoch (changes every Sunday) */
+  function weekIndex() {
+    return Math.floor(Date.now() / (7 * 24 * 60 * 60 * 1000)) % QUOTES.length;
+  }
+
+  var HEBREW_MONTHS = ["ינואר","פברואר","מרץ","אפריל","מאי","יוני","יולי","אוגוסט","ספטמבר","אוקטובר","נובמבר","דצמבר"];
+
+  function patchQuote() {
+    /* the quote card: a div with a gradient top bar, a big " and then quote+author */
+    var allDivs = document.querySelectorAll('div.bg-card');
+    for (var i = 0; i < allDivs.length; i++) {
+      var d = allDivs[i];
+      /* identify by the " span inside */
+      var quoteSymbol = d.querySelector('span.text-3xl.text-violet-400');
+      if (!quoteSymbol) continue;
+      if (d.dataset.ppWeeklyPatched) return; /* already replaced */
+      d.dataset.ppWeeklyPatched = '1';
+
+      var qi = weekIndex();
+      var q  = QUOTES[qi];
+      var now = new Date();
+      var weekLabel = 'שבוע ' + (qi + 1) + ' · ' + HEBREW_MONTHS[now.getMonth()];
+
+      /* replace text nodes in the two <p> tags inside */
+      var ps = d.querySelectorAll('p');
+      if (ps.length >= 2) {
+        ps[0].textContent = q.q;
+        ps[1].textContent = q.a + ' · ' + weekLabel;
+      }
+      return;
+    }
+  }
+
+  var obs21 = new MutationObserver(function() { patchQuote(); });
+  obs21.observe(document.body, { childList: true, subtree: true });
+  setTimeout(patchQuote, 500);
+  setTimeout(patchQuote, 2000);
+
+})();
+</script>
 </body></html>
