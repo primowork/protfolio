@@ -2339,8 +2339,13 @@
     })();
 
     /* ── Summary scoreboard ──────────────────────── */
-    var ranked = syms.filter(function(s){ return scores[s] && scores[s].total > 0; })
-      .sort(function(a,b){ return scores[b].passes - scores[a].passes; });
+    var ranked = syms.slice().sort(function(a,b){
+      var sa = scores[a], sb = scores[b];
+      var ha = sa && sa.total > 0, hb = sb && sb.total > 0;
+      if (ha !== hb) return hb ? 1 : -1; /* no-data stocks last */
+      if (!ha) return 0;
+      return sb.passes - sa.passes;
+    });
 
     if (ranked.length) {
       var sumHdr = document.createElement('div');
@@ -2350,8 +2355,9 @@
 
       ranked.forEach(function(s) {
         var sc = scores[s];
-        var c = sc.passes >= 4 ? '#34d399' : sc.passes >= 3 ? '#fbbf24' : sc.passes >= 2 ? '#fb923c' : '#f87171';
-        var pct = sc.total > 0 ? Math.round(sc.passes / sc.total * 100) : 0;
+        var noData = !sc || sc.total === 0;
+        var c = noData ? '#475569' : sc.passes >= 4 ? '#34d399' : sc.passes >= 3 ? '#fbbf24' : sc.passes >= 2 ? '#fb923c' : '#f87171';
+        var pct = (sc && sc.total > 0) ? Math.round(sc.passes / sc.total * 100) : 0;
 
         var rowWrap = document.createElement('div');
         rowWrap.style.cssText = 'border-bottom:1px solid hsl(222,14%,16%);';
@@ -2363,14 +2369,15 @@
           ' style="font-weight:700;font-size:15px;color:#e2e8f0;text-decoration:none;min-width:55px;" onclick="event.stopPropagation()">' + s + '</a>' +
           '<div style="flex:1;background:hsl(222,14%,18%);border-radius:3px;height:7px;overflow:hidden;">' +
           '<div style="width:' + pct + '%;height:100%;background:' + c + ';border-radius:3px;"></div></div>' +
-          '<span style="font-size:14px;font-weight:700;color:' + c + ';min-width:36px;text-align:left;">' + sc.passes + '/' + sc.total + '</span>' +
+          '<span style="font-size:14px;font-weight:700;color:' + c + ';min-width:36px;text-align:left;">' + (noData ? '—' : sc.passes + '/' + sc.total) + '</span>' +
           '<span style="font-size:11px;color:#475569;">▼</span>';
         rowWrap.appendChild(row);
 
         /* detail row — hidden by default */
         var detail = document.createElement('div');
         detail.style.cssText = 'display:none;padding:6px 4px 8px;display:none;flex-wrap:wrap;gap:5px;direction:rtl;background:hsl(222,14%,8%);';
-        sc.filters.forEach(function(f, i) {
+        var filterSlots = (sc && sc.filters) ? sc.filters : [null,null,null,null,null,null];
+        filterSlots.forEach(function(f, i) {
           var fc = !f ? '#334155' : f.pass ? '#34d399' : '#f87171';
           var chip = document.createElement('span');
           chip.style.cssText = 'padding:2px 8px;border-radius:5px;font-size:12px;font-weight:700;' +
