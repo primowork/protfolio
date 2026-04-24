@@ -1679,8 +1679,24 @@
     return FILTER_NAMES_TECH;
   }
 
-  function explainFilter(sym, i, f) {
-    if (!f) return 'אין נתונים זמינים';
+  /* returns true when the company is operating at a loss (roe<0 or profitMargins<0) */
+  function isUnprofitable(fd) {
+    if (!fd) return false;
+    if (fd.roe != null && fd.roe < 0) return true;
+    if (fd.profitMargins != null && fd.profitMargins < 0) return true;
+    if (fd.operatingMargins != null && fd.operatingMargins < 0) return true;
+    return false;
+  }
+
+  function explainFilter(sym, i, f, ctx) {
+    if (!f) {
+      /* For unprofitable non-financial companies, valuation (F2) and risk (F4)
+         commonly have no data (no P/E, no EBITDA). Say why instead of "no data". */
+      if (ctx && ctx.unprofitable && !isFin(sym) && (i === 1 || i === 3)) {
+        return 'לא רווחית';
+      }
+      return 'אין נתונים זמינים';
+    }
     var pass = f.pass, val = f.val;
     if (isFin(sym)) {
       var fe;
@@ -2146,6 +2162,7 @@
     /* per-filter explanation lines */
     var filterDiv = document.createElement('div');
     filterDiv.style.cssText = 'direction:rtl;';
+    var ctx1 = { unprofitable: isUnprofitable(fd) };
     slots.forEach(function(f, i) {
       var fc = !f ? '#475569' : f.pass ? '#34d399' : '#f87171';
       var icon = !f ? '—' : f.pass ? '✓' : '✗';
@@ -2154,7 +2171,7 @@
       line.innerHTML =
         '<span style="color:' + fc + ';font-weight:700;min-width:18px;flex-shrink:0;">' + icon + '</span>' +
         '<span style="color:' + fc + ';font-weight:600;min-width:100px;flex-shrink:0;">' + SNAMES[i] + '</span>' +
-        '<span style="color:#94a3b8;">' + explainFilter(sym, i, f) + '</span>';
+        '<span style="color:#94a3b8;">' + explainFilter(sym, i, f, ctx1) + '</span>';
       filterDiv.appendChild(line);
     });
     container.appendChild(filterDiv);
@@ -2622,6 +2639,7 @@
         verdict.textContent = overallVerdict(s, sc ? sc.passes : 0, sc ? sc.total : 0);
         detail.appendChild(verdict);
 
+        var ctx2 = { unprofitable: isUnprofitable(fundData[s]) };
         filterSlots.forEach(function(f, i) {
           var fc = !f ? '#475569' : f.pass ? '#34d399' : '#f87171';
           var icon = !f ? '—' : f.pass ? '✓' : '✗';
@@ -2630,7 +2648,7 @@
           line.innerHTML =
             '<span style="color:' + fc + ';font-weight:700;min-width:18px;flex-shrink:0;">' + icon + '</span>' +
             '<span style="color:' + fc + ';font-weight:600;min-width:100px;flex-shrink:0;">' + filterNames(s)[i] + '</span>' +
-            '<span style="color:#94a3b8;">' + explainFilter(s, i, f) + '</span>';
+            '<span style="color:#94a3b8;">' + explainFilter(s, i, f, ctx2) + '</span>';
           detail.appendChild(line);
         });
 
