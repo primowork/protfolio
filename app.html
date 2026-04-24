@@ -6404,14 +6404,35 @@ body:not(:has(#pp-v21-chart-card)) #pp-v20-portfolio {
     return '$' + Math.round(v).toLocaleString('en-US');
   }
 
-  /* ── find existing Recharts pie wrapper to hide ──── */
+  /* ── find every Recharts pie card on the page ───── */
+  function findAllRechartsPieCards() {
+    var found = [];
+    document.querySelectorAll('main .recharts-wrapper, main .recharts-responsive-container').forEach(function(w) {
+      if (!w.querySelector('.recharts-pie')) return;
+      /* walk up to the nearest card-like ancestor (stop at main) */
+      var node = w;
+      for (var i = 0; i < 8; i++) {
+        if (!node.parentElement) break;
+        if (node.parentElement.tagName === 'MAIN') break;
+        node = node.parentElement;
+      }
+      if (found.indexOf(node) === -1) found.push(node);
+    });
+    return found;
+  }
+
   function findRechartsPie() {
-    /* scan for any .recharts-pie inside main */
-    var candidates = document.querySelectorAll('main .recharts-wrapper, main .recharts-responsive-container');
-    for (var i = 0; i < candidates.length; i++) {
-      if (candidates[i].querySelector('.recharts-pie')) return candidates[i];
-    }
-    return null;
+    var all = findAllRechartsPieCards();
+    return all.length ? all[0] : null;
+  }
+
+  function hideAllRechartsPieCards() {
+    findAllRechartsPieCards().forEach(function(card) {
+      /* don't hide our own v22 card */
+      if (card.id === CARD_ID) return;
+      if (card.querySelector && card.querySelector('#' + CARD_ID)) return;
+      card.classList.add('pp-v22-hidden-recharts');
+    });
   }
 
   /* ── build the new donut card ───────────────────── */
@@ -6528,12 +6549,16 @@ body:not(:has(#pp-v21-chart-card)) #pp-v20-portfolio {
     var alloc = computeAllocation();
     if (!alloc.slices.length) return false;
 
-    var existing = findRechartsPie();
-    if (!existing) return false;
+    var existingPieCards = findAllRechartsPieCards();
+    if (!existingPieCards.length) return false;
+    var firstExistingCard = existingPieCards[0];
 
     var existingCard = document.getElementById(CARD_ID);
     /* rebuild card whenever slice count or order changes */
     var signature = alloc.slices.map(function(s) { return s.sym; }).join(',');
+
+    /* hide ALL recharts pie cards on the page (there can be more than one) */
+    hideAllRechartsPieCards();
 
     if (existingCard && existingCard.dataset.sig === signature) {
       /* only update values, no re-render */
@@ -6541,26 +6566,14 @@ body:not(:has(#pp-v21-chart-card)) #pp-v20-portfolio {
       return true;
     }
 
-    /* hide the Recharts pie wrapper — find its outermost card ancestor
-       (up to but not including .pp-v22-card or main) */
-    var ancestor = existing;
-    /* walk up at most 4 levels looking for a card-like container */
-    for (var i = 0; i < 4; i++) {
-      if (!ancestor.parentElement) break;
-      var p = ancestor.parentElement;
-      if (p.tagName === 'MAIN') break;
-      ancestor = p;
-    }
-    ancestor.classList.add('pp-v22-hidden-recharts');
-
     var card = buildCard(alloc);
     card.dataset.sig = signature;
 
     if (existingCard && existingCard.parentNode) {
       existingCard.parentNode.replaceChild(card, existingCard);
     } else {
-      /* put card where the old recharts was */
-      ancestor.parentNode.insertBefore(card, ancestor.nextSibling);
+      /* put card where the first old recharts was */
+      firstExistingCard.parentNode.insertBefore(card, firstExistingCard.nextSibling);
     }
 
     /* render chart */
@@ -6615,6 +6628,8 @@ body:not(:has(#pp-v21-chart-card)) #pp-v20-portfolio {
         /* on other tabs the React chart isn't rendered — nothing to do */
         return;
       }
+      /* always hide any Recharts pies React may have re-rendered */
+      hideAllRechartsPieCards();
       inject();
     }, 300);
   });
