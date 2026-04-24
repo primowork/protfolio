@@ -97,10 +97,17 @@ async def debug_oauth(request: Request):
 
     Shows whether OAuth config env vars are set on the server and whether the
     browser's session cookie is being parsed. NO secrets are returned.
+
+    Also *writes* a counter to the session so on the second hit we can
+    verify that the session cookie round-trips correctly through the browser.
     """
     session_secret   = os.getenv("SESSION_SECRET", "")
     is_default_secret = (session_secret == "" or
                          session_secret == "dev-secret-CHANGE-IN-PRODUCTION")
+
+    # increment hit counter — proves cookie round-trip works
+    hits = request.session.get("debug_hits", 0) + 1
+    request.session["debug_hits"] = hits
 
     return {
         "google_client_id_set":     bool(GOOGLE_CLIENT_ID),
@@ -112,9 +119,11 @@ async def debug_oauth(request: Request):
         "session_keys":             list(request.session.keys()),
         "has_oauth_state":          "oauth_state" in request.session,
         "has_user_id":              "user_id" in request.session,
+        "debug_hits":               hits,
         "request_scheme":           request.url.scheme,
         "request_host":             request.headers.get("host"),
         "x_forwarded_proto":        request.headers.get("x-forwarded-proto"),
+        "cookies_received":         list(request.cookies.keys()),
     }
 
 
