@@ -91,6 +91,33 @@ async def auth_config():
     return {"google": bool(GOOGLE_CLIENT_ID), "apple": bool(APPLE_CLIENT_ID)}
 
 
+@router.get("/api/debug/oauth")
+async def debug_oauth(request: Request):
+    """Read-only diagnostic — safe to expose.
+
+    Shows whether OAuth config env vars are set on the server and whether the
+    browser's session cookie is being parsed. NO secrets are returned.
+    """
+    session_secret   = os.getenv("SESSION_SECRET", "")
+    is_default_secret = (session_secret == "" or
+                         session_secret == "dev-secret-CHANGE-IN-PRODUCTION")
+
+    return {
+        "google_client_id_set":     bool(GOOGLE_CLIENT_ID),
+        "google_client_id_prefix":  GOOGLE_CLIENT_ID[:12] + "..." if GOOGLE_CLIENT_ID else None,
+        "google_client_secret_set": bool(GOOGLE_CLIENT_SECRET),
+        "google_redirect_uri":      GOOGLE_REDIRECT_URI,
+        "session_secret_set":       not is_default_secret,
+        "session_https_only":       os.getenv("SESSION_HTTPS_ONLY", "false").lower() == "true",
+        "session_keys":             list(request.session.keys()),
+        "has_oauth_state":          "oauth_state" in request.session,
+        "has_user_id":              "user_id" in request.session,
+        "request_scheme":           request.url.scheme,
+        "request_host":             request.headers.get("host"),
+        "x_forwarded_proto":        request.headers.get("x-forwarded-proto"),
+    }
+
+
 @router.get("/auth/google")
 async def google_login(request: Request):
     if not GOOGLE_CLIENT_ID:
@@ -115,7 +142,20 @@ async def google_callback(request: Request, code: str = None,
         return RedirectResponse("/?auth_error=cancelled")
     if not code:
         raise HTTPException(400, "Missing authorization code")
-    if state != request.session.get("oauth_state"):
+    stored = request.session.get("oauth_state")
+    if state != stored:
+        # Log *why* the check failed so we can distinguish cookie loss from attack
+        sess_keys = list(request.session.keys())
+        logging.warning(
+            "OAuth state mismatch: got=%r stored=%r session_keys=%s cookie_present=%s",
+            state, stored, sess_keys, "cookie" in {k.lower() for k in request.headers.keys()}
+        )
+        if stored is None:
+            raise HTTPException(
+                400,
+                "Session cookie was lost between /auth/google and callback. "
+                "Check SESSION_SECRET + SESSION_HTTPS_ONLY on Railway, then clear browser cookies."
+            )
         raise HTTPException(400, "OAuth state mismatch — possible CSRF")
     request.session.pop("oauth_state", None)
 

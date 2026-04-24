@@ -1214,4 +1214,12 @@ async def get_growth_trend(symbols: str = ""):
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8000))
-    uvicorn.run("server:app", host="0.0.0.0", port=port)
+    uvicorn.run(
+        "server:app",
+        host="0.0.0.0",
+        port=port,
+        # Trust X-Forwarded-Proto/For from Railway's reverse proxy so
+        # request.url.scheme returns "https" and Secure cookies work correctly.
+        proxy_headers=True,
+        forwarded_allow_ips="*",
+    )
