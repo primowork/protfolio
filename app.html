@@ -317,8 +317,9 @@
     /* initialise state once for the lifetime of the page */
     if (!_state) _state = { sortKey: 'value', sortDir: -1, dayMode: '%' };
 
-    /* rebuild click handlers only when the <table> element itself is new */
-    if (!_headersBuilt.has(table)) {
+    /* rebuild click handlers when table is new OR React wiped the header classes */
+    var headersIntact = ths.some(function(th){ return th.classList.contains('pp-th'); });
+    if (!_headersBuilt.has(table) || !headersIntact) {
       _headersBuilt.add(table);
       buildHeaders(table, ths, _state);
     }
@@ -398,6 +399,10 @@
   setTimeout(function() {
     document.querySelectorAll('table').forEach(enhance);
     injectRateBadge();
+  }, 1200);
+  /* guaranteed fallback — fixes debounce storms resetting headers */
+  setInterval(function() {
+    document.querySelectorAll('table').forEach(enhance);
   }, 1200);
 
 })();
