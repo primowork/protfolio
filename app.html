@@ -6155,20 +6155,13 @@ body:not(:has(#pp-v21-chart-card)) #pp-v20-portfolio {
     if (document.getElementById(CARD_ID)) { _injected = true; return true; }
     if (!isDashActive()) return false;
 
-    var main = document.querySelector('main');
-    if (!main) return false;
-
-    var card = buildCard();
-    /* insert inside the v20 header, above the nav bar */
+    /* require v20 header — never fall back to <main> so chart stays above nav */
     var hdr = document.getElementById('pp-v20-header');
     var nav = document.getElementById('pp-v20-nav');
-    if (hdr && nav) {
-      hdr.insertBefore(card, nav);
-    } else if (main.firstChild) {
-      main.insertBefore(card, main.firstChild);
-    } else {
-      main.appendChild(card);
-    }
+    if (!hdr || !nav) return false;
+
+    var card = buildCard();
+    hdr.insertBefore(card, nav);
 
     _injected = true;
     render();
@@ -6209,13 +6202,14 @@ body:not(:has(#pp-v21-chart-card)) #pp-v20-portfolio {
     }
   });
 
+  /* start after v20 header is guaranteed to exist (v20 injects at ~1500ms) */
   setTimeout(function() {
     if (!inject()) {
       var retry = setInterval(function() {
         if (inject()) clearInterval(retry);
-      }, 500);
+      }, 200);
     }
-  }, 2000);
+  }, 2200);
 
   /* periodic re-fetch every 5 min for real-time feel */
   setInterval(function() {
