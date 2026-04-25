@@ -89,7 +89,14 @@ with open(os.path.join(_dir, "app.html"), "r", encoding="utf-8") as f:
 
 @app.get("/")
 async def root():
-    return HTMLResponse(HTML_CONTENT)
+    return HTMLResponse(
+        HTML_CONTENT,
+        headers={
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Pragma": "no-cache",
+            "Expires": "0",
+        }
+    )
 
 @app.get("/health")
 async def health():
