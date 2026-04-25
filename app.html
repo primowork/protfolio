@@ -906,21 +906,17 @@ window.addEventListener('error', function(e) {
     }
     .pp-num-anim { animation: pp-numPop .4s cubic-bezier(.22,.68,0,1.2) both; }
 
-    /* ── Tab active indicator ───────────────────────── */
+    /* ── Tab active indicator (React native tabs, briefly visible before v20 injects) ── */
     button[class*="border-violet-500"] {
       position: relative;
-      background: hsla(262,83%,58%,.15) !important;
-      color: hsl(262,90%,78%) !important;
-      font-weight: 700 !important;
-      border-radius: 6px !important;
     }
     button[class*="border-violet-500"]::after {
       content: '';
       position: absolute;
-      bottom: 0; left: 15%; right: 15%;
-      height: 3px;
-      background: hsl(262 83% 58%);
-      border-radius: 3px 3px 0 0;
+      bottom: -1px; left: 10%; right: 10%;
+      height: 2px;
+      background: linear-gradient(90deg, transparent, hsl(262 83% 58%), transparent);
+      border-radius: 2px;
       animation: pp-fadeUp .3s both;
     }
 
@@ -5325,14 +5321,15 @@ body:not(:has(#pp-v21-chart-card)) #pp-v20-portfolio {
   background: rgba(255,255,255,0.09);
 }
 .pp-v20-tab.active {
-  background: #ffffff;
-  color: #0e0f11;
-  border-color: var(--v20-accent);
-  font-weight: 600;
+  background: hsla(262,83%,58%,.18);
+  color: hsl(262,90%,82%);
+  border-color: hsl(262,83%,58%);
+  font-weight: 700;
+  box-shadow: 0 0 12px hsla(262,83%,58%,.25);
 }
 .pp-v20-tab.active:hover {
-  background: #ffffff;
-  color: #0e0f11;
+  background: hsla(262,83%,58%,.25);
+  color: hsl(262,90%,88%);
 }
 .pp-v20-tab-badge {
   width: 5px; height: 5px;
