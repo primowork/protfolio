@@ -914,18 +914,14 @@ window.addEventListener('error', function(e) {
     /* ── Tab active indicator (React native tabs, briefly visible before v20 injects) ── */
     button[class*="border-violet-500"] {
       position: relative;
-      background: hsla(262,83%,58%,.15) !important;
-      color: hsl(262,90%,78%) !important;
-      font-weight: 700 !important;
-      border-radius: 6px !important;
     }
     button[class*="border-violet-500"]::after {
       content: '';
       position: absolute;
-      bottom: 0; left: 15%; right: 15%;
-      height: 3px;
-      background: hsl(262 83% 58%);
-      border-radius: 3px 3px 0 0;
+      bottom: -1px; left: 10%; right: 10%;
+      height: 2px;
+      background: linear-gradient(90deg, transparent, hsl(262 83% 58%), transparent);
+      border-radius: 2px;
       animation: pp-fadeUp .3s both;
     }
 
