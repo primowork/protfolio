@@ -5500,10 +5500,14 @@ body:not(:has(#pp-v21-chart-card)) #pp-v20-portfolio {
     var found = null;
     document.querySelectorAll('button').forEach(function(b) {
       if (b.closest && b.closest('#pp-v20-header')) return;
+      /* skip the injected alerts button — it clones border-violet-500 at inject time
+         and never gets its class updated by React, poisoning active-tab detection */
+      if (b.id === 'pp-alerts-navbtn') return;
       var lbl = b.textContent.trim();
       if (lbl && b.className && b.className.indexOf('border-violet-500') !== -1) {
         TABS.forEach(function(t) {
-          if (lbl === t.id || lbl.indexOf(t.id) !== -1) found = t.id;
+          /* exact match only, and never match alertsTab entries via React button scan */
+          if (!t.alertsTab && lbl === t.id) found = t.id;
         });
       }
     });
@@ -6329,9 +6333,19 @@ body:not(:has(#pp-v21-chart-card)) #pp-v20-portfolio {
 
   /* ── find dashboard container ────────────────────── */
   function isDashActive() {
+    /* Primary: v20 nav manages active class explicitly — most reliable */
+    var v20Nav = document.getElementById('pp-v20-nav');
+    if (v20Nav) {
+      var btns = v20Nav.querySelectorAll('button.pp-v20-tab');
+      for (var i = 0; i < btns.length; i++) {
+        if (btns[i].textContent.trim() === 'דשבורד' && btns[i].classList.contains('active'))
+          return true;
+      }
+      return false;
+    }
+    /* Fallback: v20 not yet injected — read React native buttons */
     var ok = false;
     document.querySelectorAll('button').forEach(function(b) {
-      if (b.closest && b.closest('#pp-v20-header')) return;
       if (b.textContent.trim() === 'דשבורד' &&
           b.className && b.className.indexOf('border-violet-500') !== -1) ok = true;
     });
@@ -6885,6 +6899,7 @@ body:not(:has(#pp-v21-chart-card)) #pp-v20-portfolio {
 
   /* ── inject / refresh ───────────────────────────── */
   function inject() {
+    if (!isDashActive()) return false;
     var alloc = computeAllocation();
     if (!alloc.slices.length) return false;
 
@@ -6949,9 +6964,19 @@ body:not(:has(#pp-v21-chart-card)) #pp-v20-portfolio {
 
   /* ── active-tab check ───────────────────────────── */
   function isDashActive() {
+    /* Primary: v20 nav manages active class explicitly — most reliable */
+    var v20Nav = document.getElementById('pp-v20-nav');
+    if (v20Nav) {
+      var btns = v20Nav.querySelectorAll('button.pp-v20-tab');
+      for (var i = 0; i < btns.length; i++) {
+        if (btns[i].textContent.trim() === 'דשבורד' && btns[i].classList.contains('active'))
+          return true;
+      }
+      return false;
+    }
+    /* Fallback: v20 not yet injected — read React native buttons */
     var ok = false;
     document.querySelectorAll('button').forEach(function(b) {
-      if (b.closest && b.closest('#pp-v20-header')) return;
       if (b.textContent.trim() === 'דשבורד' &&
           b.className && b.className.indexOf('border-violet-500') !== -1) ok = true;
     });
