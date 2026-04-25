@@ -4761,7 +4761,12 @@
   var _reloaded     = sessionStorage.getItem('pp_auth_reload');
 
   /* ── Build login overlay ──────────────────────────── */
+  /* DISABLED: overlay caused black screen; auth is silent now */
   function buildOverlay() {
+    return { style: {} };
+  }
+
+  function _buildOverlay_DISABLED() {
     var ov = document.createElement('div');
     ov.id = 'auth-overlay';
     ov.style.cssText = 'position:fixed;inset:0;z-index:9999;background:hsl(222,20%,5%);' +
