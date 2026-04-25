@@ -1686,9 +1686,9 @@ window.addEventListener('error', function(e) {
   function isREIT(sym) { return !!REIT_SET[sym]; }
 
   /* ── Shared scoring/display helpers (used by screener + analysis) ── */
-  var FILTER_NAMES_TECH = ['📈 צמיחה','💰 תמחור','💎 איכות','🛡️ סיכון','🚀 מומנטום','📉 מגמה'];
-  var FILTER_NAMES_FIN  = ['📈 ROE',  '💰 P/B',  '💎 דיבידנד','🛡️ ROA',   '🚀 מומנטום','📉 מגמה'];
-  var FILTER_NAMES_REIT = ['📈 FFO',  '💰 P/B',  '💎 דיבידנד','🛡️ ROA',   '🚀 מומנטום','📉 מגמה'];
+  var FILTER_NAMES_TECH = ['📈 צמיחה','💰 תמחור','💎 איכות','🛡️ סיכון','🚀 מומנטום','📉 מגמה','🏰 חפיר'];
+  var FILTER_NAMES_FIN  = ['📈 ROE',  '💰 P/B',  '💎 דיבידנד','🛡️ ROA',   '🚀 מומנטום','📉 מגמה','🏰 חפיר'];
+  var FILTER_NAMES_REIT = ['📈 FFO',  '💰 P/B',  '💎 דיבידנד','🛡️ ROA',   '🚀 מומנטום','📉 מגמה','🏰 חפיר'];
   function filterNames(sym) {
     if (isREIT(sym)) return FILTER_NAMES_REIT;
     if (isFin(sym))  return FILTER_NAMES_FIN;
@@ -1743,6 +1743,7 @@ window.addEventListener('error', function(e) {
     }
     if (i === 4) return pass ? val + ' — מעל ממוצע 200 יומי, השוק בצידה' : val + ' — מתחת לממוצע 200 יומי';
     if (i === 5) return pass ? val + ' — הצמיחה האחרונה האיצה, עסק בתנופה' : val + ' — הצמיחה האחרונה האטה ⚠️';
+    if (i === 6) return pass ? val + ' ממוצע 5 שנים — חפיר כלכלי חזק, התחרות לא שוחקת את הרווחיות' : val + ' ממוצע 5 שנים — ROIC מתחת ל-15%, חפיר חלש';
     return val;
   }
 
@@ -1756,9 +1757,9 @@ window.addEventListener('error', function(e) {
     return sym + ' נכשלת ברוב הפילטרים — זהירות ❌';
   }
 
-  var W_TECH = [3.0, 2.5, 2.0, 2.0, 0.5, 0.5];
-  var W_FIN  = [2.5, 2.5, 2.0, 2.0, 0.5, 0.5];
-  var W_REIT = [3.0, 1.5, 3.0, 1.0, 0.5, 0.5];
+  var W_TECH = [3.0, 2.5, 2.0, 2.0, 0.5, 0.5, 2.0];
+  var W_FIN  = [2.5, 2.5, 2.0, 2.0, 0.5, 0.5, 1.5];
+  var W_REIT = [3.0, 1.5, 3.0, 1.0, 0.5, 0.5, 1.0];
   function recWeights(sym) { return isREIT(sym) ? W_REIT : (isFin(sym) ? W_FIN : W_TECH); }
 
   var REC_PLAIN = {
@@ -2105,7 +2106,7 @@ window.addEventListener('error', function(e) {
     var fin = isFin(sym);
     var reit = isREIT(sym);
     var SNAMES = filterNames(sym);
-    var slots = [null, null, null, null, null, null];
+    var slots = [null, null, null, null, null, null, null];
 
     if (fin) {
       /* F1: FFO Growth (REITs) | ROE (other financials) */
@@ -2152,8 +2153,10 @@ window.addEventListener('error', function(e) {
     if (m) slots[4] = { pass: !m.below || m.pct > -8, val: (m.below ? '' : '+') + m.pct + '% MA200' };
     /* F6: Growth trend (all) */
     if (gt) slots[5] = { pass: !gt.decelerating, val: 'TTM ' + (gt.ttmGrowth >= 0 ? '+' : '') + gt.ttmGrowth + '%' };
+    /* F7: Quantitative moat — 5yr avg ROIC > 15% (all sectors) */
+    if (fd && fd.roic5yr != null) slots[6] = { pass: fd.roic5yr > 15, val: 'ROIC ' + fd.roic5yr + '%' };
 
-    var total = 6;
+    var total = 7;
     var passes = slots.filter(function(f) { return f && f.pass === true; }).length;
     var anyData = slots.some(function(f) { return f !== null; });
     if (!anyData) {
@@ -2280,7 +2283,7 @@ window.addEventListener('error', function(e) {
     var ts = document.createElement('p');
     ts.style.cssText = 'font-size:13.5px;color:#475569;margin-bottom:12px;direction:ltr;text-align:left;';
     ts.textContent = 'עדכון: ' + new Date().toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'}) +
-                     ' | הצלבה עם 6 פילטרי האלגוריתם';
+                     ' | הצלבה עם 7 פילטרי האלגוריתם';
     panel.appendChild(ts);
 
     /* per-stock pass counter */
