@@ -6468,20 +6468,22 @@ body:not(:has(#pp-v21-chart-card)) #pp-v20-portfolio {
 
   /* hide the duplicate React-rendered stats row once it appears */
   function hideReactStatCards() {
-    /* DISABLED: text-match heuristic could lock onto an ancestor and display:none
-       a wrapper that contains the whole dashboard, producing a black screen. */
-    return;
     var labels = ['רווח כולל', 'רווח ממומש', 'רווח לא ממומש', 'ערך תיק'];
     var candidates = document.querySelectorAll('div, section');
     var best = null;
     candidates.forEach(function(el) {
       if (el.closest && el.closest('#pp-v21-chart-card')) return;
+      if (el.closest && el.closest('#pp-v20-wrapper')) return;
       if (el.dataset && el.dataset.ppHidden) return;
+      /* sanity: never match top-level containers */
+      if (el.id === 'root' || el.id === 'pp-v20-wrapper') return;
+      if (el.tagName === 'MAIN' || el.tagName === 'BODY' || el.tagName === 'HTML') return;
       var txt = el.textContent || '';
       var matched = 0;
       labels.forEach(function(l) { if (txt.indexOf(l) !== -1) matched++; });
       if (matched < 4) return;
-      if (el.children.length < 3 || el.children.length > 8) return;
+      /* require exactly 4 children — that's the React stat-grid signature */
+      if (el.children.length !== 4) return;
       /* prefer the deepest match — no descendant that also contains all 4 */
       if (!best || best.contains(el)) best = el;
     });
@@ -6712,11 +6714,14 @@ body:not(:has(#pp-v21-chart-card)) #pp-v20-portfolio {
       if (!w.querySelector('.recharts-pie')) return;
       /* walk up to the nearest card-like ancestor (stop at main) */
       var node = w;
-      for (var i = 0; i < 8; i++) {
+      for (var i = 0; i < 4; i++) {
         if (!node.parentElement) break;
         if (node.parentElement.tagName === 'MAIN') break;
         node = node.parentElement;
       }
+      /* sanity guard: never hide a high-level container that wraps everything */
+      if (node.id === 'root' || node.id === 'pp-v20-wrapper') return;
+      if (node.tagName === 'MAIN' || node.tagName === 'BODY') return;
       if (found.indexOf(node) === -1) found.push(node);
     });
     return found;
@@ -6728,10 +6733,8 @@ body:not(:has(#pp-v21-chart-card)) #pp-v20-portfolio {
   }
 
   function hideAllRechartsPieCards() {
-    /* DISABLED: walk-up could grab a too-high ancestor and hide the entire dashboard,
-       producing a black screen. The duplicate Recharts pie is a cosmetic issue;
-       a black page is not. */
-    return;
+    /* walk-up is now capped at 4 levels with sanity guards in
+       findAllRechartsPieCards, so it can't grab a high-level container. */
     findAllRechartsPieCards().forEach(function(card) {
       /* don't hide our own v22 card */
       if (card.id === CARD_ID) return;
