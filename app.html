@@ -94,9 +94,14 @@ window.addEventListener('error', function(e) {
       localStorage.setItem(KEY, raw);
     }
     var state = raw ? JSON.parse(raw) : {};
-    /* when server data has been loaded, skip default seeding */
     var _srvSynced = !!localStorage.getItem('pp_server_synced');
-    if (!_srvSynced) state.ilsDeposits = DEPOSITS;
+    /* Always merge hardcoded deposits by ID — never leave the list empty.
+       User-added entries (different IDs) are preserved; new hardcoded ones
+       are appended. This survives server-data overwrites and flag pre-setting. */
+    if (!Array.isArray(state.ilsDeposits)) state.ilsDeposits = [];
+    var _existIds = {};
+    state.ilsDeposits.forEach(function(d) { _existIds[d.id] = true; });
+    DEPOSITS.forEach(function(d) { if (!_existIds[d.id]) state.ilsDeposits.push(d); });
     /* ensure required fields exist so React never crashes on first visit */
     if (!Array.isArray(state.transactions)) state.transactions = [];
     /* seed holdings only when empty AND not loaded from server */
@@ -5727,12 +5732,22 @@ body:not(:has(#pp-v21-chart-card)) #pp-v20-portfolio {
     var hdr = document.getElementById(HDR_ID);
     if (!hdr || !hdr._btns) return;
     var activeLabel = getActiveReactLabel();
+    if (!activeLabel) {
+      /* React is between renders — don't know which tab is active.
+         Only default to dashboard when NO button has active yet (initial state).
+         Otherwise keep the current state to avoid a "flash" that makes
+         isDashActive() return true on non-dashboard tabs. */
+      var anyActive = TABS.some(function(t) {
+        return hdr._btns[t.id] && hdr._btns[t.id].classList.contains('active');
+      });
+      if (anyActive) return;
+      activeLabel = 'דשבורד';
+    }
     TABS.forEach(function(t) {
       var btn = hdr._btns[t.id];
       if (!btn) return;
-      var isActive = (t.id === activeLabel) || (!activeLabel && t.id === 'דשבורד');
-      if (isActive) btn.classList.add('active');
-      else          btn.classList.remove('active');
+      if (t.id === activeLabel) btn.classList.add('active');
+      else btn.classList.remove('active');
     });
   }
 
