@@ -4920,17 +4920,21 @@ window.addEventListener('error', function(e) {
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (resp) {
         var serverData = resp && resp.portfolio;
-        if (serverData) {
-          /* Don't reload — flash of unrendered page can look like a black screen.
-             React reads localStorage on next mount; user sees fresh data after navigating. */
+        var local = localStorage.getItem(PORTFOLIO_KEY);
+        _origSetItem(SYNCED_KEY, '1');
+
+        if (local) {
+          /* Local data is the source of truth — always push it to server.
+             Never overwrite local with server data: React already mounted with
+             the local value, and its useEffect will re-save it, so writing
+             stale server data here would cause the next-mount state to go back
+             in time and erase changes the user made. */
+          pushPortfolio(local);
+        } else if (serverData) {
+          /* localStorage is empty (new browser / cleared storage).
+             Restore from server and reload so React picks up the data. */
           _origSetItem(PORTFOLIO_KEY, JSON.stringify(serverData));
-          _origSetItem(SYNCED_KEY, '1');
-        } else if (!serverData) {
-          var local = localStorage.getItem(PORTFOLIO_KEY);
-          if (local) pushPortfolio(local);
-          _origSetItem(SYNCED_KEY, '1');
-        } else {
-          _origSetItem(SYNCED_KEY, '1');
+          window.location.reload();
         }
       });
   }
@@ -4984,6 +4988,9 @@ window.addEventListener('error', function(e) {
   /* ── Intercept localStorage writes for continuous sync ── */
   var _origSetItem = localStorage.setItem.bind(localStorage);
   var _syncTimer = null;
+  /* Pre-enable sync for returning users so React's first useEffect save
+     (which fires on mount before onAuthenticated resolves) is pushed. */
+  if (_wasLoggedIn) _origSetItem(SYNCED_KEY, '1');
   localStorage.setItem = function (key, value) {
     _origSetItem(key, value);
     if (key === PORTFOLIO_KEY && localStorage.getItem(SYNCED_KEY)) {
