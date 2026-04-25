@@ -392,8 +392,20 @@ async def get_fundamentals(symbols: str = ""):
 
     def fetch_one(sym):
         try:
-            t      = yf.Ticker(sym)
-            info   = t.info
+            t = yf.Ticker(sym)
+            info = None
+            for _attempt in range(2):
+                try:
+                    info = t.info
+                    break
+                except Exception as _e:
+                    if '401' in str(_e) and _attempt == 0:
+                        time.sleep(1.5)
+                        t = yf.Ticker(sym)
+                    else:
+                        raise
+            if info is None:
+                return sym, None
             result = {}
             fcf    = info.get("freeCashflow")
             mktcap = info.get("marketCap")
