@@ -11,6 +11,11 @@ window.addEventListener('error', function(e) {
   } catch(_) {}
 });
 </script>
+<script>
+/* version stamp — open browser console to verify loaded version */
+console.log('%c[Primo Portfolio] v2026-04-25c loaded', 'color:#7c3aed;font-weight:bold;font-size:14px');
+document.documentElement.setAttribute('data-pp-build', '2026-04-25c');
+</script>
     <script>
 /* inject styles into <head> — avoids Safari body-style parsing issues */
 (function(){
@@ -828,49 +833,30 @@ window.addEventListener('error', function(e) {
     });
   }
 
-  /* ── inject buttons into the reports tab only ────── */
-  var _exportSection = null;
+  /* ── permanent floating export panel (always visible after app loads) ── */
+  function injectFloatingExport() {
+    if (document.getElementById('pp-export-float')) return;
 
-  function isReportsTabActive() {
-    /* primary: use our own body data-attribute (set by v20 syncTabs every 600ms) */
-    var ppTab = document.body.dataset && document.body.dataset.ppTab;
-    if (ppTab) return ppTab === 'דוחות' || ppTab === 'הפקדות';
-    /* fallback: scan React tab buttons for active class */
-    var active = false;
-    document.querySelectorAll('button').forEach(function(btn) {
-      if (btn.closest && btn.closest('#pp-v20-wrapper')) return;
-      var lbl = btn.textContent.trim();
-      if ((lbl === 'דוחות' || lbl === 'הפקדות') &&
-          btn.className && btn.className.indexOf('border-violet-500') !== -1) active = true;
-    });
-    return active;
-  }
+    var panel = document.createElement('div');
+    panel.id = 'pp-export-float';
+    panel.style.cssText = [
+      'position:fixed', 'bottom:20px', 'left:20px', 'z-index:9999',
+      'background:hsl(222 14% 10%)',
+      'border:1px solid hsl(222 14% 22%)',
+      'border-radius:10px', 'padding:10px 14px',
+      'box-shadow:0 4px 32px rgba(0,0,0,.7)',
+      'display:flex', 'gap:8px', 'align-items:center',
+      'direction:rtl'
+    ].join(';');
 
-  function removeExportSection() {
-    if (_exportSection && _exportSection.parentNode) {
-      _exportSection.parentNode.removeChild(_exportSection);
-    }
-    _exportSection = null;
-  }
-
-  function _buildExportButtons() {
-    var section = document.createElement('div');
-    section.id = 'pp-export-section';
-
-    var label = document.createElement('p');
-    label.style.cssText = 'font-size:13.5px;color:hsl(210 10% 45%);text-transform:uppercase;letter-spacing:.1em;margin-bottom:12px;';
-    label.textContent = 'ייצוא נתונים';
-    section.appendChild(label);
-
-    var row = document.createElement('div');
-    row.style.cssText = 'display:flex;gap:10px;flex-wrap:wrap;align-items:center;';
+    var label = document.createElement('span');
+    label.style.cssText = 'font-size:11px;color:hsl(210 10% 45%);white-space:nowrap;';
+    label.textContent = 'ייצוא:';
 
     var xlBtn = document.createElement('button');
     xlBtn.id = 'pp-xl-btn';
-    xlBtn.textContent = '⬇ ייצוא לאקסל';
-    xlBtn.style.cssText = 'background:hsl(142 70% 28%);color:#fff;border:none;padding:8px 18px;font-size:17.6px;cursor:pointer;border-radius:4px;font-weight:600;transition:opacity .15s;';
-    xlBtn.onmouseover = function(){ this.style.opacity='.8'; };
-    xlBtn.onmouseout  = function(){ this.style.opacity='1';  };
+    xlBtn.textContent = '⬇ Excel';
+    xlBtn.style.cssText = 'background:hsl(142 70% 28%);color:#fff;border:none;padding:6px 14px;font-size:13px;cursor:pointer;border-radius:5px;font-weight:600;white-space:nowrap;';
     xlBtn.onclick = function() {
       if (typeof XLSX === 'undefined') { alert('ספריית Excel עדיין נטענת, נסה שוב'); return; }
       exportExcel();
@@ -878,64 +864,22 @@ window.addEventListener('error', function(e) {
 
     var pdfBtn = document.createElement('button');
     pdfBtn.id = 'pp-pdf-btn';
-    pdfBtn.textContent = '📄 ייצוא PDF';
-    pdfBtn.style.cssText = 'background:hsl(262 70% 38%);color:#fff;border:none;padding:8px 18px;font-size:17.6px;cursor:pointer;border-radius:4px;font-weight:600;transition:opacity .15s;';
-    pdfBtn.onmouseover = function(){ this.style.opacity='.8'; };
-    pdfBtn.onmouseout  = function(){ this.style.opacity='1';  };
+    pdfBtn.textContent = '📄 PDF';
+    pdfBtn.style.cssText = 'background:hsl(262 70% 38%);color:#fff;border:none;padding:6px 14px;font-size:13px;cursor:pointer;border-radius:5px;font-weight:600;white-space:nowrap;';
     pdfBtn.onclick = function() { generatePdfReport(); };
 
-    var desc = document.createElement('span');
-    desc.style.cssText = 'font-size:13.5px;color:hsl(210 10% 40%);align-self:center;';
-    desc.textContent = 'פורטפוליו · עסקאות · הפקדות · תובנות · אלגוריתם';
-
-    row.appendChild(xlBtn);
-    row.appendChild(pdfBtn);
-    row.appendChild(desc);
-    section.appendChild(row);
-    return section;
+    panel.appendChild(label);
+    panel.appendChild(xlBtn);
+    panel.appendChild(pdfBtn);
+    document.body.appendChild(panel);
   }
 
-  function injectExportButtons() {
-    if (!isReportsTabActive()) { removeExportSection(); return; }
-    if (_exportSection && document.body.contains(_exportSection)) return;
-
-    var section = _buildExportButtons();
-
-    /* try to anchor near snapshot section; any element containing snapshot-related text */
-    var anchor = null;
-    document.querySelectorAll('p, h2, h3, button').forEach(function(el) {
-      if (!anchor && el.textContent.includes('תמונת מצב')) anchor = el;
-    });
-
-    if (anchor) {
-      var container = anchor.closest('div[class]');
-      if (container && container.parentNode) {
-        section.style.cssText = 'background:hsl(222 14% 11%);border:1px solid hsl(222 14% 18%);padding:16px;margin-bottom:0;';
-        container.parentNode.insertBefore(section, container);
-        _exportSection = section;
-        return;
-      }
-    }
-
-    /* fallback: fixed floating panel — works regardless of React DOM structure */
-    section.style.cssText = [
-      'position:fixed', 'bottom:24px', 'left:24px', 'z-index:9990',
-      'background:hsl(222 14% 11%)', 'border:1px solid hsl(222 14% 18%)',
-      'border-radius:8px', 'padding:12px 16px',
-      'box-shadow:0 4px 24px rgba(0,0,0,.6)'
-    ].join(';');
-    document.body.appendChild(section);
-    _exportSection = section;
+  /* inject as soon as body exists, retry until done */
+  function tryInjectFloat() {
+    if (document.body) { injectFloatingExport(); }
+    else { setTimeout(tryInjectFloat, 200); }
   }
-
-  var obs2 = new MutationObserver(function() {
-    if (!isReportsTabActive()) { removeExportSection(); return; }
-    injectExportButtons();
-  });
-  obs2.observe(document.body, { childList: true, subtree: true });
-
-  setTimeout(injectExportButtons, 1500);
-  setInterval(injectExportButtons, 2000);
+  setTimeout(tryInjectFloat, 800);
 
 })();
 </script>
@@ -5714,19 +5658,27 @@ body:not(:has(#pp-v21-chart-card)) #pp-v20-portfolio {
   }
 
   function clickTab(tab) {
-    /* preserve scroll so the sticky nav stays in place after React re-renders */
     var savedY = window.scrollY;
     if (tab.alertsTab) {
       var alertsBtn = document.getElementById('pp-alerts-navbtn');
       if (alertsBtn) { alertsBtn.click(); }
     } else {
-      var reactId = tab.reactId || tab.id;
+      /* try reactId first, then tab.id as fallback — covers cases where
+         the React app labels the tab differently than we expect */
+      var candidates = [];
+      if (tab.reactId) candidates.push(tab.reactId);
+      if (tab.id !== tab.reactId) candidates.push(tab.id);
+
+      var clicked = false;
       document.querySelectorAll('button').forEach(function(b) {
         if (b.closest && b.closest('#pp-v20-wrapper')) return;
-        if (b.textContent.trim() === reactId) b.click();
+        var txt = b.textContent.trim();
+        if (!clicked && candidates.indexOf(txt) !== -1) {
+          b.click();
+          clicked = true;
+        }
       });
     }
-    /* restore after React has settled */
     requestAnimationFrame(function() {
       window.scrollTo({ top: savedY, behavior: 'instant' });
     });
