@@ -909,14 +909,18 @@ window.addEventListener('error', function(e) {
     /* ── Tab active indicator ───────────────────────── */
     button[class*="border-violet-500"] {
       position: relative;
+      background: hsla(262,83%,58%,.15) !important;
+      color: hsl(262,90%,78%) !important;
+      font-weight: 700 !important;
+      border-radius: 6px !important;
     }
     button[class*="border-violet-500"]::after {
       content: '';
       position: absolute;
-      bottom: -1px; left: 10%; right: 10%;
-      height: 2px;
-      background: linear-gradient(90deg, transparent, hsl(262 83% 58%), transparent);
-      border-radius: 2px;
+      bottom: 0; left: 15%; right: 15%;
+      height: 3px;
+      background: hsl(262 83% 58%);
+      border-radius: 3px 3px 0 0;
       animation: pp-fadeUp .3s both;
     }
 
@@ -6741,6 +6745,25 @@ body:not(:has(#pp-v21-chart-card)) #pp-v20-portfolio {
       if (card.querySelector && card.querySelector('#' + CARD_ID)) return;
       card.classList.add('pp-v22-hidden-recharts');
     });
+    /* Also hide the React "התפלגות תיק" card directly by its title.
+       More reliable than walking up from .recharts-wrapper. */
+    var ps = document.querySelectorAll('main p');
+    for (var i = 0; i < ps.length; i++) {
+      if (ps[i].textContent.trim() === 'התפלגות תיק') {
+        var oldCard = ps[i].parentElement;
+        if (oldCard && oldCard.id !== CARD_ID && !oldCard.dataset.ppHiddenOld) {
+          oldCard.dataset.ppHiddenOld = '1';
+          oldCard.style.display = 'none';
+        }
+      }
+    }
+  }
+
+  function maybeRemove() {
+    if (!isDashActive()) {
+      var card = document.getElementById(CARD_ID);
+      if (card && card.parentNode) card.parentNode.removeChild(card);
+    }
   }
 
   /* ── build the new donut card ───────────────────── */
@@ -6933,7 +6956,7 @@ body:not(:has(#pp-v21-chart-card)) #pp-v20-portfolio {
     clearTimeout(_deb22);
     _deb22 = setTimeout(function() {
       if (!isDashActive()) {
-        /* on other tabs the React chart isn't rendered — nothing to do */
+        maybeRemove();
         return;
       }
       /* always hide any Recharts pies React may have re-rendered */
