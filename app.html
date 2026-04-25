@@ -5001,6 +5001,18 @@ window.addEventListener('error', function(e) {
   min-height: 0 !important;
 }
 
+/* Hard guarantee: nothing can hide the React content roots.
+   Defends against any over-zealous custom inject script. */
+#root,
+#root > div,
+#pp-v20-wrapper,
+main,
+[role="main"] {
+  display: revert !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+}
+
 #pp-v20-header {
   --v20-bg:      #0e0f11;
   --v20-surface: #16181c;
@@ -6456,6 +6468,9 @@ body:not(:has(#pp-v21-chart-card)) #pp-v20-portfolio {
 
   /* hide the duplicate React-rendered stats row once it appears */
   function hideReactStatCards() {
+    /* DISABLED: text-match heuristic could lock onto an ancestor and display:none
+       a wrapper that contains the whole dashboard, producing a black screen. */
+    return;
     var labels = ['רווח כולל', 'רווח ממומש', 'רווח לא ממומש', 'ערך תיק'];
     var candidates = document.querySelectorAll('div, section');
     var best = null;
@@ -6713,6 +6728,10 @@ body:not(:has(#pp-v21-chart-card)) #pp-v20-portfolio {
   }
 
   function hideAllRechartsPieCards() {
+    /* DISABLED: walk-up could grab a too-high ancestor and hide the entire dashboard,
+       producing a black screen. The duplicate Recharts pie is a cosmetic issue;
+       a black page is not. */
+    return;
     findAllRechartsPieCards().forEach(function(card) {
       /* don't hide our own v22 card */
       if (card.id === CARD_ID) return;
