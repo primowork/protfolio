@@ -5745,6 +5745,7 @@ body:not(:has(#pp-v21-chart-card)) #pp-v20-portfolio {
       if (t.id === activeLabel) btn.classList.add('active');
       else btn.classList.remove('active');
     });
+    document.body.dataset.ppTab = activeLabel;
   }
 
   function syncAll() {
@@ -6555,6 +6556,8 @@ body:not(:has(#pp-v21-chart-card)) #pp-v20-portfolio {
 /* =======================================================
    Feature Patch v22 — Beautiful portfolio donut chart
    ======================================================= */
+
+body:not([data-pp-tab="דשבורד"]) #pp-v22-card { display: none !important; }
 
 #pp-v22-card {
   direction: rtl;
