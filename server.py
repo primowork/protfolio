@@ -503,6 +503,61 @@ async def get_fundamentals(symbols: str = ""):
             if debt is not None and ebitda and ebitda > 0:
                 result["debtEbitda"] = round(debt / ebitda, 1)
 
+            # 5-year average ROIC = avg(NOPAT / Invested Capital) × 100
+            try:
+                import pandas as pd
+                inc2 = t.income_stmt
+                bs2  = t.balance_sheet
+                if not inc2.empty and not bs2.empty:
+                    n_yrs = min(len(inc2.columns), len(bs2.columns), 5)
+                    roic_vals = []
+                    for yi in range(n_yrs):
+                        ic_col = inc2.columns[yi]
+                        bs_col = bs2.columns[yi]
+                        # EBIT
+                        ebit2 = None
+                        for lbl in ("Operating Income", "EBIT"):
+                            if lbl in inc2.index:
+                                v = inc2[ic_col].get(lbl)
+                                if v is not None and not pd.isna(v):
+                                    ebit2 = float(v); break
+                        if ebit2 is None:
+                            continue
+                        # Effective tax rate (default US corp 21%)
+                        try:
+                            pretax2 = next((float(inc2[ic_col][l]) for l in
+                                ("Pretax Income", "Income Before Tax")
+                                if l in inc2.index and not pd.isna(inc2[ic_col].get(l, float('nan')))), None)
+                            taxexp2 = next((abs(float(inc2[ic_col][l])) for l in
+                                ("Tax Provision", "Income Tax Expense")
+                                if l in inc2.index and not pd.isna(inc2[ic_col].get(l, float('nan')))), None)
+                            tr = (taxexp2 / pretax2) if (pretax2 and pretax2 > 0 and taxexp2 is not None) else 0.21
+                            tr = min(max(tr, 0.0), 0.50)
+                        except Exception:
+                            tr = 0.21
+                        nopat2 = ebit2 * (1 - tr)
+                        # Invested Capital = Equity + Debt − Cash
+                        eq2 = next((float(bs2[bs_col][l]) for l in
+                            ("Stockholders Equity", "Total Stockholders Equity",
+                             "Total Equity Gross Minority Interest")
+                            if l in bs2.index and not pd.isna(bs2[bs_col].get(l, float('nan')))), None)
+                        if eq2 is None:
+                            continue
+                        dbt2 = next((float(bs2[bs_col][l]) for l in ("Total Debt", "Long Term Debt")
+                            if l in bs2.index and not pd.isna(bs2[bs_col].get(l, float('nan')))), 0.0) or 0.0
+                        csh2 = next((float(bs2[bs_col][l]) for l in
+                            ("Cash And Cash Equivalents",
+                             "Cash Cash Equivalents And Short Term Investments")
+                            if l in bs2.index and not pd.isna(bs2[bs_col].get(l, float('nan')))), 0.0) or 0.0
+                        ic2 = eq2 + dbt2 - csh2
+                        if ic2 <= 0:
+                            continue
+                        roic_vals.append(nopat2 / ic2 * 100)
+                    if len(roic_vals) >= 2:
+                        result["roic5yr"] = round(sum(roic_vals) / len(roic_vals), 1)
+            except Exception as roic_err:
+                logging.debug(f"ROIC calc {sym}: {roic_err}")
+
             if result:
                 return sym, result
         except Exception as e:
