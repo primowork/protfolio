@@ -832,10 +832,16 @@ window.addEventListener('error', function(e) {
   var _exportSection = null;
 
   function isReportsTabActive() {
+    /* primary: use our own body data-attribute (set by v20 syncTabs every 600ms) */
+    var ppTab = document.body.dataset && document.body.dataset.ppTab;
+    if (ppTab) return ppTab === 'דוחות' || ppTab === 'הפקדות';
+    /* fallback: scan React tab buttons for active class */
     var active = false;
     document.querySelectorAll('button').forEach(function(btn) {
-      if (btn.textContent.trim() === 'דוחות' &&
-          btn.className.includes('border-violet-500')) active = true;
+      if (btn.closest && btn.closest('#pp-v20-wrapper')) return;
+      var lbl = btn.textContent.trim();
+      if ((lbl === 'דוחות' || lbl === 'הפקדות') &&
+          btn.className && btn.className.indexOf('border-violet-500') !== -1) active = true;
     });
     return active;
   }
@@ -847,24 +853,9 @@ window.addEventListener('error', function(e) {
     _exportSection = null;
   }
 
-  function injectExportButtons() {
-    // Only inject when דוחות tab is active
-    if (!isReportsTabActive()) { removeExportSection(); return; }
-    if (_exportSection && document.body.contains(_exportSection)) return;
-
-    var allP = document.querySelectorAll('p');
-    var snapshotP = null;
-    allP.forEach(function(p) {
-      if (p.textContent.includes('שמור תמונת מצב')) snapshotP = p;
-    });
-    if (!snapshotP) return;
-
-    var container = snapshotP.closest('div[class]');
-    if (!container || !container.parentNode) return;
-
+  function _buildExportButtons() {
     var section = document.createElement('div');
     section.id = 'pp-export-section';
-    section.style.cssText = 'background:hsl(222 14% 11%);border:1px solid hsl(222 14% 18%);padding:16px;margin-bottom:0;';
 
     var label = document.createElement('p');
     label.style.cssText = 'font-size:13.5px;color:hsl(210 10% 45%);text-transform:uppercase;letter-spacing:.1em;margin-bottom:12px;';
@@ -872,7 +863,7 @@ window.addEventListener('error', function(e) {
     section.appendChild(label);
 
     var row = document.createElement('div');
-    row.style.cssText = 'display:flex;gap:10px;flex-wrap:wrap;';
+    row.style.cssText = 'display:flex;gap:10px;flex-wrap:wrap;align-items:center;';
 
     var xlBtn = document.createElement('button');
     xlBtn.id = 'pp-xl-btn';
@@ -901,8 +892,39 @@ window.addEventListener('error', function(e) {
     row.appendChild(pdfBtn);
     row.appendChild(desc);
     section.appendChild(row);
+    return section;
+  }
 
-    container.parentNode.insertBefore(section, container);
+  function injectExportButtons() {
+    if (!isReportsTabActive()) { removeExportSection(); return; }
+    if (_exportSection && document.body.contains(_exportSection)) return;
+
+    var section = _buildExportButtons();
+
+    /* try to anchor near snapshot section; any element containing snapshot-related text */
+    var anchor = null;
+    document.querySelectorAll('p, h2, h3, button').forEach(function(el) {
+      if (!anchor && el.textContent.includes('תמונת מצב')) anchor = el;
+    });
+
+    if (anchor) {
+      var container = anchor.closest('div[class]');
+      if (container && container.parentNode) {
+        section.style.cssText = 'background:hsl(222 14% 11%);border:1px solid hsl(222 14% 18%);padding:16px;margin-bottom:0;';
+        container.parentNode.insertBefore(section, container);
+        _exportSection = section;
+        return;
+      }
+    }
+
+    /* fallback: fixed floating panel — works regardless of React DOM structure */
+    section.style.cssText = [
+      'position:fixed', 'bottom:24px', 'left:24px', 'z-index:9990',
+      'background:hsl(222 14% 11%)', 'border:1px solid hsl(222 14% 18%)',
+      'border-radius:8px', 'padding:12px 16px',
+      'box-shadow:0 4px 24px rgba(0,0,0,.6)'
+    ].join(';');
+    document.body.appendChild(section);
     _exportSection = section;
   }
 
@@ -913,6 +935,7 @@ window.addEventListener('error', function(e) {
   obs2.observe(document.body, { childList: true, subtree: true });
 
   setTimeout(injectExportButtons, 1500);
+  setInterval(injectExportButtons, 2000);
 
 })();
 </script>
@@ -5915,7 +5938,9 @@ body:not(:has(#pp-v21-chart-card)) #pp-v20-portfolio {
     TABS.forEach(function(t) {
       var btn = hdr._btns[t.id];
       if (!btn) return;
-      if (t.id === activeLabel) btn.classList.add('active');
+      /* also highlight הפקדות when the React דוחות tab is active (they share the same React tab) */
+      var isActive = t.id === activeLabel || (activeLabel === 'דוחות' && t.id === 'הפקדות');
+      if (isActive) btn.classList.add('active');
       else btn.classList.remove('active');
     });
     document.body.dataset.ppTab = activeLabel;
